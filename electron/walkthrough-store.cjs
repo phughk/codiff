@@ -4,17 +4,19 @@ const { createHash, randomUUID } = require('node:crypto');
 const {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } = require('node:fs');
 const { homedir } = require('node:os');
 const { join } = require('node:path');
 
 const MAX_STORED_WALKTHROUGH_BYTES = 8 * 1024 * 1024;
-const STORED_WALKTHROUGH_VERSION = 1;
+const STORED_WALKTHROUGH_VERSION = 2;
 
 const getWalkthroughStoreDir = () => join(homedir(), '.codiff', 'walkthroughs');
 
@@ -22,64 +24,29 @@ const getWalkthroughStoreDir = () => join(homedir(), '.codiff', 'walkthroughs');
 const getWalkthroughStorePath = (cacheKey) =>
   join(getWalkthroughStoreDir(), `${createHash('sha256').update(cacheKey).digest('hex')}.json`);
 
-/** @param {unknown} value */
-const isHunkGroup = (value) => {
-  const group = /** @type {any} */ (value);
-  return (
-    group &&
-    typeof group === 'object' &&
-    typeof group.id === 'string' &&
-    Array.isArray(group.hunkIds) &&
-    group.hunkIds.every((id) => typeof id === 'string') &&
-    Array.isArray(group.hunks) &&
-    group.hunks.every(
-      (hunk) =>
-        hunk &&
-        typeof hunk === 'object' &&
-        typeof hunk.id === 'string' &&
-        typeof hunk.path === 'string',
-    )
-  );
-};
-
-/** @param {unknown} value */
-const isNarrativeWalkthrough = (value) => {
+/**
+ * Stored walkthroughs are kept in their scope-neutral authoring shape and are
+ * re-anchored against the live diff on load, so only the outline is checked.
+ *
+ * @param {unknown} value
+ */
+const isStoredWalkthrough = (value) => {
   const walkthrough = /** @type {any} */ (value);
   return (
     walkthrough &&
     typeof walkthrough === 'object' &&
-    ['claude', 'codex', 'opencode', 'pi'].includes(walkthrough.agent) &&
-    walkthrough.kind === 'narrative' &&
-    walkthrough.version === 4 &&
-    typeof walkthrough.focus === 'string' &&
-    typeof walkthrough.generatedAt === 'string' &&
     typeof walkthrough.title === 'string' &&
-    walkthrough.repo &&
-    typeof walkthrough.repo === 'object' &&
-    typeof walkthrough.repo.root === 'string' &&
-    walkthrough.source &&
-    typeof walkthrough.source === 'object' &&
-    typeof walkthrough.source.type === 'string' &&
     Array.isArray(walkthrough.chapters) &&
-    walkthrough.chapters.length > 0 &&
-    walkthrough.chapters.every(
-      (chapter) =>
-        chapter &&
-        typeof chapter === 'object' &&
-        typeof chapter.id === 'string' &&
-        typeof chapter.title === 'string' &&
-        Array.isArray(chapter.stops) &&
-        chapter.stops.length > 0 &&
-        chapter.stops.every(isHunkGroup),
-    ) &&
-    Array.isArray(walkthrough.support) &&
-    walkthrough.support.every(isHunkGroup)
+    walkthrough.chapters.length > 0
   );
 };
 
 /**
+ * Reads a stored walkthrough and marks it as recently used, so pruning only
+ * removes entries that have not been read or written for a while.
+ *
  * @param {string} cacheKey
- * @returns {import('../core/types.ts').NarrativeWalkthrough | null}
+ * @returns {Record<string, any> | null}
  */
 const readStoredWalkthrough = (cacheKey) => {
   const path = getWalkthroughStorePath(cacheKey);
@@ -98,9 +65,15 @@ const readStoredWalkthrough = (cacheKey) => {
       typeof record !== 'object' ||
       record.version !== STORED_WALKTHROUGH_VERSION ||
       record.cacheKey !== cacheKey ||
-      !isNarrativeWalkthrough(record.walkthrough)
+      !isStoredWalkthrough(record.walkthrough)
     ) {
       return null;
+    }
+    try {
+      const now = new Date();
+      utimesSync(path, now, now);
+    } catch {
+      // A read-only store still serves the entry; it just ages from its last write.
     }
     return record.walkthrough;
   } catch {
@@ -110,7 +83,7 @@ const readStoredWalkthrough = (cacheKey) => {
 
 /**
  * @param {string} cacheKey
- * @param {import('../core/types.ts').NarrativeWalkthrough} walkthrough
+ * @param {Record<string, unknown>} walkthrough
  */
 const writeStoredWalkthrough = (cacheKey, walkthrough) => {
   const directory = getWalkthroughStoreDir();
@@ -141,8 +114,43 @@ const writeStoredWalkthrough = (cacheKey, walkthrough) => {
   }
 };
 
+/**
+ * Deletes stored walkthroughs (and interrupted temporary writes) that were
+ * last used more than `maxAgeMs` ago. Returns the number of removed files.
+ *
+ * @param {number} maxAgeMs
+ * @param {number} [now]
+ */
+const pruneStoredWalkthroughs = (maxAgeMs, now = Date.now()) => {
+  let entries;
+  try {
+    entries = readdirSync(getWalkthroughStoreDir());
+  } catch {
+    return 0;
+  }
+
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.endsWith('.json') && !entry.endsWith('.tmp')) {
+      continue;
+    }
+    const path = join(getWalkthroughStoreDir(), entry);
+    try {
+      if (now - statSync(path).mtimeMs > maxAgeMs) {
+        rmSync(path, { force: true });
+        removed += 1;
+      }
+    } catch {
+      // Another process may have removed or replaced the entry concurrently.
+    }
+  }
+  return removed;
+};
+
 module.exports = {
+  getWalkthroughStoreDir,
   getWalkthroughStorePath,
+  pruneStoredWalkthroughs,
   readStoredWalkthrough,
   writeStoredWalkthrough,
 };

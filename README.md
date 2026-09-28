@@ -155,6 +155,7 @@ counts; when it is `false`, Codiff hides those changes from the working-tree rev
     "sidebarPosition": "left",
     "showWhitespace": false,
     "theme": "system",
+    "walkthroughCacheMaxAgeDays": 7,
     "walkthroughPrompt": "",
     "wordWrap": false,
   },
@@ -256,6 +257,13 @@ selected model; choose `opencode-default` when portability is more important tha
 Set `settings.walkthroughPrompt` to add custom instructions to generated walkthrough prompts. Use it
 to request a specific language, tone, or level of detail while Codiff keeps its walkthrough guide,
 hunk ids, review-order constraints, and JSON schema in place.
+
+Generated walkthroughs are cached in `~/.codiff/walkthroughs`, keyed by a hash of the diff (file
+names, statuses, and changed contents) plus the agent, model, and `settings.walkthroughPrompt`. The
+same change reuses its walkthrough whether you review it as staged edits, a commit, a branch, or a
+pull request. Regenerating a walkthrough replaces its cache entry. Entries not used for
+`settings.walkthroughCacheMaxAgeDays` days (default 7) are deleted; set it to `0` to disable the
+cache.
 
 To drive Codiff from your agent, install its integration from the application menu under
 `Install Skill`, then choose Codex, Claude Code, Pi, or OpenCode. Codiff updates keep the installed

@@ -90,12 +90,11 @@ const {
   writeWindowState,
 } = require('./window-state.cjs');
 const {
-  getNarrativeWalkthroughCacheKey,
   normalizeNarrativeWalkthrough,
   readNarrativeWalkthrough,
   resolveNarrativeWalkthroughModel,
 } = require('./narrative-walkthrough.cjs');
-const { readStoredWalkthrough, writeStoredWalkthrough } = require('./walkthrough-store.cjs');
+const { createWalkthroughCache } = require('./walkthrough-cache.cjs');
 const { uploadSharedSnapshot } = require('./shared-walkthrough-upload.cjs');
 const {
   resolvePlanShareTarget,
@@ -156,6 +155,9 @@ const openWindows = new Set();
 const pendingCommentsClipboardController = createPendingCommentsClipboardController({ clipboard });
 /** @type {CodiffConfig} */
 let config = createDefaultConfig();
+const walkthroughCache = createWalkthroughCache({
+  getMaxAgeDays: () => config.settings.walkthroughCacheMaxAgeDays,
+});
 
 /**
  * @type {Map<string, ReturnType<typeof createSkillInstaller>>}
@@ -1654,29 +1656,13 @@ ipcMain.handle('codiff:getNarrativeWalkthrough', async (event, source, options) 
     const agentOptions = getAgentOptions(agent);
     const walkthroughModel = resolveNarrativeWalkthroughModel(state, agent, agentOptions.model);
     const walkthroughPrompt = config.settings.walkthroughPrompt;
-    const cacheKey = getNarrativeWalkthroughCacheKey(
-      state,
-      agent,
-      walkthroughModel,
-      walkthroughContext,
-      walkthroughPrompt,
-    );
     if (!options?.force) {
-      const cachedWalkthrough = readStoredWalkthrough(cacheKey);
+      const cachedWalkthrough = walkthroughCache.read(state, agent, walkthroughModel, {
+        context: walkthroughContext,
+        customPrompt: walkthroughPrompt,
+      });
       if (cachedWalkthrough) {
-        return {
-          status: 'ready',
-          walkthrough: {
-            ...cachedWalkthrough,
-            ...(walkthroughContext ? { context: walkthroughContext } : {}),
-            agent: agent.id,
-            repo: {
-              branch: state.branch,
-              root: state.root,
-            },
-            source: state.source,
-          },
-        };
+        return { status: 'ready', walkthrough: cachedWalkthrough };
       }
     }
 
@@ -1699,20 +1685,9 @@ ipcMain.handle('codiff:getNarrativeWalkthrough', async (event, source, options) 
       options?.previousWalkthrough,
     );
     if (result.status === 'ready') {
-      const generatedCacheKey = getNarrativeWalkthroughCacheKey(
-        state,
-        agent,
-        generatedModel,
-        walkthroughContext,
-        walkthroughPrompt,
-      );
-      try {
-        const cacheableWalkthrough = { ...result.walkthrough };
-        delete cacheableWalkthrough.context;
-        writeStoredWalkthrough(generatedCacheKey, cacheableWalkthrough);
-      } catch {
-        // Caching is optional; a filesystem failure must not hide a generated result.
-      }
+      walkthroughCache.write(state, agent, generatedModel, result.walkthrough, {
+        customPrompt: walkthroughPrompt,
+      });
     }
     return result;
   } catch (error) {

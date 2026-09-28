@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -106,7 +106,7 @@ test('rejects malformed and incompatible cache records', () => {
     path,
     JSON.stringify({
       cacheKey,
-      version: 2,
+      version: 1,
       walkthrough: sampleWalkthrough(),
     }),
   );
@@ -116,9 +116,37 @@ test('rejects malformed and incompatible cache records', () => {
     path,
     JSON.stringify({
       cacheKey,
-      version: 1,
-      walkthrough: { ...sampleWalkthrough(), version: 3 },
+      version: 2,
+      walkthrough: { ...sampleWalkthrough(), chapters: [] },
     }),
   );
   expect(store.readStoredWalkthrough(cacheKey)).toBe(null);
+});
+
+test('prunes entries that were not used within the max age', () => {
+  const store = loadStore();
+  const day = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  store.writeStoredWalkthrough('stale', sampleWalkthrough());
+  store.writeStoredWalkthrough('used', sampleWalkthrough());
+  store.writeStoredWalkthrough('fresh', sampleWalkthrough());
+  const stalePath = store.getWalkthroughStorePath('stale');
+  const usedPath = store.getWalkthroughStorePath('used');
+  const interruptedPath = join(store.getWalkthroughStoreDir(), 'interrupted.json.1.tmp');
+  const unrelatedPath = join(store.getWalkthroughStoreDir(), 'notes.txt');
+  writeFileSync(interruptedPath, '{');
+  writeFileSync(unrelatedPath, 'keep');
+  const eightDaysAgo = new Date(now - 8 * day);
+  for (const path of [stalePath, usedPath, interruptedPath, unrelatedPath]) {
+    utimesSync(path, eightDaysAgo, eightDaysAgo);
+  }
+  // Reading an entry marks it as used.
+  expect(store.readStoredWalkthrough('used')).not.toBe(null);
+
+  expect(store.pruneStoredWalkthroughs(7 * day, now)).toBe(2);
+  expect(existsSync(stalePath)).toBe(false);
+  expect(existsSync(interruptedPath)).toBe(false);
+  expect(existsSync(usedPath)).toBe(true);
+  expect(existsSync(store.getWalkthroughStorePath('fresh'))).toBe(true);
+  expect(existsSync(unrelatedPath)).toBe(true);
 });

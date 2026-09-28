@@ -17,6 +17,7 @@
     "showOutdated": false,
     "showWhitespace": false,
     "theme": "system",
+    "walkthroughCacheMaxAgeDays": 7,
     "walkthroughPrompt": "",
     "wordWrap": false
   },

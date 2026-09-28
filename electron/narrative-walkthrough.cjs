@@ -2,7 +2,6 @@
 
 // Narrative walkthrough generation and normalization trust boundary.
 
-const { createHash } = require('node:crypto');
 const {
   cleanText,
   normalizeEnum,
@@ -56,7 +55,6 @@ const INCLUDED_WALKTHROUGH_HUNKS = 12;
 const TIMEOUT_MS_PER_EXTRA_FILE = 1_000;
 const TIMEOUT_MS_PER_EXTRA_HUNK = 2_000;
 const LARGE_WALKTHROUGH_HUNK_THRESHOLD = 100;
-const WALKTHROUGH_CACHE_KEY_VERSION = 1;
 
 /** @param {unknown} value @param {string} [fallback] */
 const cleanRich = (value, fallback = '') => {
@@ -878,43 +876,6 @@ const buildNarrativeWalkthroughPrompt = (
   buildNarrativeWalkthroughRequest(state, context, agentLabel, customPrompt, previousWalkthrough)
     .prompt;
 
-/**
- * Cache identity for the exact model input. The previous walkthrough is
- * intentionally excluded: forced regeneration replaces the cached result for
- * the current diff rather than creating a second cache lineage.
- *
- * @param {RepositoryState} state
- * @param {Agent} agent
- * @param {unknown} model
- * @param {WalkthroughContext | null | undefined} context
- * @param {unknown} customPrompt
- */
-const getNarrativeWalkthroughCacheKey = (state, agent, model, context, customPrompt) => {
-  const prompt = buildNarrativeWalkthroughPrompt(state, context, agent.label, customPrompt);
-  return createHash('sha256')
-    .update(
-      JSON.stringify({
-        agent: agent.id,
-        diff: state.files.map((file) => ({
-          fingerprint: file.fingerprint,
-          oldPath: file.oldPath,
-          path: file.path,
-          status: file.status,
-          sections: file.sections.map((section) => ({
-            hunkIds: getSectionWalkthroughHunks(file, section).map((hunk) => hunk.id),
-            id: section.id,
-            kind: section.kind,
-          })),
-        })),
-        model: agent.normalizeModel(model),
-        prompt,
-        responseSchema: narrativeWalkthroughResponseSchema,
-        version: WALKTHROUGH_CACHE_KEY_VERSION,
-      }),
-    )
-    .digest('hex');
-};
-
 const readNarrativeWalkthrough = async (
   state,
   agent,
@@ -985,7 +946,6 @@ const readNarrativeWalkthrough = async (
 
 module.exports = {
   buildNarrativeWalkthroughPrompt,
-  getNarrativeWalkthroughCacheKey,
   narrativeWalkthroughSchema,
   normalizeNarrativeWalkthrough,
   readNarrativeWalkthrough,

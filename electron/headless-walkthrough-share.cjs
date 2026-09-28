@@ -14,6 +14,7 @@ const {
   readNarrativeWalkthrough,
 } = require('./narrative-walkthrough.cjs');
 const { uploadSharedSnapshot } = require('./shared-walkthrough-upload.cjs');
+const { createWalkthroughCache } = require('./walkthrough-cache.cjs');
 const { mergeWalkthroughContexts, readWalkthroughContext } = require('./walkthrough-context.cjs');
 const { resolveWalkthroughShareTarget } = require('./walkthrough-sharing.cjs');
 
@@ -248,23 +249,36 @@ const generateAndShareWalkthrough = async ({
     ? readWalkthroughContext(walkthroughContextPath, codexSessionId)
     : null;
   const sessionContext = await agent.readSessionContext(sessionIds[agent.sessionLaunchOptionKey]);
-  const result = await readNarrativeWalkthrough(
-    state,
-    agent,
-    {
-      fallbackModel: agent.fallbackModel,
-      model: config.settings[agent.modelSettingKey],
-      onModelFallback: async (fallbackModel) => {
-        config.settings[agent.modelSettingKey] = fallbackModel;
-        writeConfig(config);
-      },
-    },
-    mergeWalkthroughContexts(providedContext, sessionContext),
-    config.settings.walkthroughPrompt,
-  );
+  const context = mergeWalkthroughContexts(providedContext, sessionContext);
+  const walkthroughCache = createWalkthroughCache({
+    getMaxAgeDays: () => config.settings.walkthroughCacheMaxAgeDays,
+  });
+  let model = config.settings[agent.modelSettingKey];
+  const customPrompt = config.settings.walkthroughPrompt;
+  const cachedWalkthrough = walkthroughCache.read(state, agent, model, { context, customPrompt });
+  const result = cachedWalkthrough
+    ? { status: 'ready', walkthrough: cachedWalkthrough }
+    : await readNarrativeWalkthrough(
+        state,
+        agent,
+        {
+          fallbackModel: agent.fallbackModel,
+          model,
+          onModelFallback: async (fallbackModel) => {
+            model = fallbackModel;
+            config.settings[agent.modelSettingKey] = fallbackModel;
+            writeConfig(config);
+          },
+        },
+        context,
+        customPrompt,
+      );
 
   if (result.status !== 'ready') {
     throw new Error(result.reason || `${agent.label} could not generate a walkthrough.`);
+  }
+  if (!cachedWalkthrough) {
+    walkthroughCache.write(state, agent, model, result.walkthrough, { customPrompt });
   }
 
   return uploadWalkthrough({

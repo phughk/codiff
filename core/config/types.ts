@@ -20,6 +20,7 @@ export type CodiffSettings = {
   showWhitespace: boolean;
   sidebarPosition: 'left' | 'right';
   theme: CodiffTheme;
+  walkthroughCacheMaxAgeDays: number;
   walkthroughPrompt: string;
   wordWrap: boolean;
 };

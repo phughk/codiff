@@ -27,6 +27,12 @@ const CODE_FONT_SIZE_DEFAULT = 13;
 const CODE_FONT_SIZE_MAX = 32;
 const CODE_FONT_SIZE_MIN = 10;
 
+/** @param {unknown} value */
+const normalizeWalkthroughCacheMaxAgeDays = (value) =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : defaultConfigTemplate.settings.walkthroughCacheMaxAgeDays;
+
 /** @returns {CodiffConfig} */
 const createDefaultConfig = () => ({
   keymap: { ...defaultConfigTemplate.keymap },
@@ -319,6 +325,9 @@ const mergeConfig = (raw) => {
           ? rawSettings.showWhitespace
           : defaults.settings.showWhitespace,
       theme: normalizeTheme(rawSettings.theme),
+      walkthroughCacheMaxAgeDays: normalizeWalkthroughCacheMaxAgeDays(
+        rawSettings.walkthroughCacheMaxAgeDays,
+      ),
       walkthroughPrompt:
         typeof rawSettings.walkthroughPrompt === 'string'
           ? rawSettings.walkthroughPrompt

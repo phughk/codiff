@@ -105,6 +105,12 @@
           "default": "system",
           "description": "Application color theme. 'system' follows OS preference."
         },
+        "walkthroughCacheMaxAgeDays": {
+          "type": "number",
+          "minimum": 0,
+          "default": 7,
+          "description": "Days a cached walkthrough is kept after it was last used. Walkthroughs are cached by a hash of the diff, so the same change reuses its walkthrough whether it is reviewed as staged edits, a commit, a branch, or a pull request. Set to 0 to disable the cache."
+        },
         "walkthroughPrompt": {
           "type": "string",
           "default": "",

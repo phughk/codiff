@@ -190,6 +190,7 @@ const createCodiffMock = (overrides: Partial<Window['codiff']> = {}): Window['co
     showWhitespace: false,
     sidebarPosition: defaultSettings.sidebarPosition,
     theme: 'system' as const,
+    walkthroughCacheMaxAgeDays: defaultSettings.walkthroughCacheMaxAgeDays,
     walkthroughPrompt: defaultSettings.walkthroughPrompt,
     wordWrap: false,
   })),
