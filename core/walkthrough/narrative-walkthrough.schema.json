@@ -82,6 +82,15 @@
                 "title": {
                   "type": "string"
                 },
+                "after": {
+                  "type": "string"
+                },
+                "before": {
+                  "type": "string"
+                },
+                "why": {
+                  "type": "string"
+                },
                 "importance": {
                   "enum": ["critical", "normal", "context"],
                   "type": "string"

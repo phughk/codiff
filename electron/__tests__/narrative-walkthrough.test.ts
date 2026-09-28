@@ -50,6 +50,9 @@ const {
   ) => Promise<any>;
   resolveNarrativeWalkthroughModel: (state: any, agent: any, model: unknown) => string;
 };
+const { narrativeWalkthroughResponseSchema } = require('../narrative-walkthrough-schema.cjs') as {
+  narrativeWalkthroughResponseSchema: any;
+};
 
 const addedPatch = (count: number) =>
   `@@ -0,0 +1,${count} @@\n${Array.from({ length: count }, (_, index) => `+line ${index + 1}`).join('\n')}\n`;
@@ -343,6 +346,7 @@ test('prompts generated walkthroughs to use deterministic hunk groups', () => {
   expect(prompt).toContain('Every patch hunk contains its own bounded patch excerpt');
   expect(prompt).toContain('Every stop must have a concise semantic title');
   expect(prompt).toContain('Never use a filename or path as a stop title');
+  expect(prompt).toContain('Every stop must have why, before, and after');
   expect(prompt).toContain('A stop may contain at most 14 hunkIds');
   expect(prompt).toContain('Use multiple hunkIds when the prose needs those hunks read together');
   expect(prompt).toContain('A Git hunk boundary is not a walkthrough boundary');
@@ -530,6 +534,7 @@ test('passes a compact previous walkthrough into regeneration prompts', () => {
               hunkIds: ['stale-hunk'],
               prose: 'Guards against duplicate submits.',
               title: 'Prevent double submit',
+              why: 'Double clicks charged customers twice.',
             },
           ],
           title: 'Runtime',
@@ -546,6 +551,7 @@ test('passes a compact previous walkthrough into regeneration prompts', () => {
 
   expect(prompt).toContain('Previous walkthrough to update:');
   expect(prompt).toContain('Prevent double submit');
+  expect(prompt).toContain('Double clicks charged customers twice.');
   expect(prompt).toContain('Guard duplicate submits');
   expect(prompt).toContain('Re-anchor every stop');
   expect(prompt).not.toContain('stale-hunk');
@@ -1139,6 +1145,30 @@ test('normalizes hunk header notes only for selected hunks', () => {
   expect(result.chapters[0].stops[0].notes).toEqual([
     { body: 'Explain the exact root-cause line.', hunkId: 'src/App.tsx:staged:h1' },
   ]);
+});
+
+test('normalizes short why, before, and after notes for stops', () => {
+  const input = baseInput() as any;
+  Object.assign(input.chapters[0].stops[0], {
+    after: 'A second click reuses the in-flight `submit` request.',
+    before: `  Each click
+started a new request. ${'x'.repeat(200)}`,
+    why: '   ',
+  });
+
+  const stop = normalizeNarrativeWalkthrough(input, files).chapters[0].stops[0];
+
+  expect(stop.why).toBeUndefined();
+  expect(stop.before).toBe(`Each click started a new request. ${'x'.repeat(126)}…`);
+  expect(stop.before).toHaveLength(161);
+  expect(stop.after).toBe('A second click reuses the in-flight `submit` request.');
+});
+
+test('requires why, before, and after notes from generating agents', () => {
+  const stopSchema =
+    narrativeWalkthroughResponseSchema.properties.chapters.items.properties.stops.items;
+  expect(stopSchema.required).toEqual(expect.arrayContaining(['why', 'before', 'after']));
+  expect(stopSchema.properties.why).toEqual({ maxLength: 160, type: 'string' });
 });
 
 test('drops stops and support items with unresolvable hunk ids', () => {

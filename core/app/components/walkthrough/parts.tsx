@@ -49,3 +49,33 @@ export function Narration({ prose }: { prose: string }) {
     </div>
   );
 }
+
+const stopChangeNoteLabels = [
+  ['why', 'Why'],
+  ['before', 'Before'],
+  ['after', 'After'],
+] as const;
+
+export function StopChangeNotes({
+  stop,
+}: {
+  stop: Pick<WalkthroughStop, 'after' | 'before' | 'why'>;
+}) {
+  const notes = stopChangeNoteLabels.flatMap(([key, label]) =>
+    stop[key] ? [{ key, label, note: stop[key] }] : [],
+  );
+  if (notes.length === 0) {
+    return null;
+  }
+
+  return (
+    <dl className="wt-change-notes">
+      {notes.map(({ key, label, note }) => (
+        <div className={`wt-change-note ${key}`} key={key}>
+          <dt>{label}</dt>
+          <dd>{renderInlineMarkdown(note)}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}

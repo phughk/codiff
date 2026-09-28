@@ -29,6 +29,11 @@ choose.
   Give every stop a concise semantic `title` in roughly 2-6 words, such as
   `"Prevent duplicate payments"` or `"Preserve offline drafts"`. Never use a filename or path
   as the stop title.
+- **`why` / `before` / `after`** — give every stop one short plain sentence for each (at most
+  160 characters): `why` the change is needed, how the code behaved or was handled `before` the
+  diff, and how it behaves `after` it. Codiff shows them as a compact list under the stop's prose.
+  Be concrete and to the point and do not repeat the prose. For new code, say in `before` what was
+  missing.
 - **`hunkIds[]`** — deterministic hunk ids copied from the repository digest, in the exact order
   Codiff should render them. Default to one review idea per stop, not one hunk per stop. Use
   multiple ids when those hunks implement the same idea, invariant, behavior, or repeated pattern;

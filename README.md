@@ -8,7 +8,7 @@ Codiff is a beautiful, minimal, local diff viewer for reviewing Git changes and 
 ## Why Codiff
 
 - **Fast Local Reviews:** Review and commit changes in any Git repository.
-- **LLM Walkthroughs:** Run `codiff -w` to generate an optimized commit walkthrough.
+- **LLM Walkthroughs:** Run `codiff -w` to generate an optimized commit walkthrough. Each stop says in one line why the change is needed, how it was handled before, and how it works after.
 - **Inline Review Comments:** Comment directly on GitHub pull requests and GitLab merge requests, add comments to your pending GitHub review to publish them together, or copy review comments as Markdown for follow-ups.
 - **Lightweight Definition Navigation:** Mod/Ctrl-click an identifier to find likely local definitions without starting a language server.
 

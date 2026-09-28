@@ -36,7 +36,7 @@ import {
   type CommitMessageHandler,
   type CommitOutputSubscriber,
 } from './CommitView.tsx';
-import { ChapterIcon, ImportancePill, Narration } from './parts.tsx';
+import { ChapterIcon, ImportancePill, Narration, StopChangeNotes } from './parts.tsx';
 import type { NarrativeNavigation } from './useNarrativeNavigation.ts';
 
 type FocusedRunDiff = {
@@ -172,6 +172,7 @@ function StopHeader({ stop }: { stop: WalkthroughStopView }) {
         <ImportancePill importance={stop.importance} />
       </div>
       <Narration prose={stop.prose} />
+      <StopChangeNotes stop={stop} />
     </div>
   );
 }

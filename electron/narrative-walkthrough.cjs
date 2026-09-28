@@ -16,6 +16,7 @@ const {
   ICONS,
   IMPORTANCES,
   MAX_HUNKS_PER_WALKTHROUGH_GROUP,
+  MAX_STOP_CHANGE_NOTE_CHARS,
   MAX_WALKTHROUGH_CHAPTERS,
   MAX_WALKTHROUGH_STOPS,
   narrativeWalkthroughResponseSchema,
@@ -293,6 +294,16 @@ const normalizeHunkGroup = (item, fallbackId, index) => {
   return normalized;
 };
 
+const STOP_CHANGE_NOTE_KEYS = /** @type {const} */ (['why', 'before', 'after']);
+
+/** @param {unknown} value */
+const normalizeStopChangeNote = (value) => {
+  const note = cleanText(value);
+  return note.length > MAX_STOP_CHANGE_NOTE_CHARS
+    ? `${note.slice(0, MAX_STOP_CHANGE_NOTE_CHARS).trimEnd()}…`
+    : note;
+};
+
 const hunkGroupKey = (group) => (group.hunkIds || []).join('\n');
 
 const normalizeChapters = (input, index, coveredHunkIds) => {
@@ -336,6 +347,12 @@ const normalizeChapters = (input, index, coveredHunkIds) => {
 
       group.importance = normalizeEnum(stop?.importance, IMPORTANCES, 'normal');
       group.prose = prose;
+      for (const key of STOP_CHANGE_NOTE_KEYS) {
+        const note = normalizeStopChangeNote(stop?.[key]);
+        if (note) {
+          group[key] = note;
+        }
+      }
       stops.push(group);
       itemIds.add(group.id);
       seenStopHunkGroups.add(key);
@@ -692,6 +709,12 @@ const buildPreviousWalkthroughInput = (previousWalkthrough) => {
     .map((chapter) => ({
       blurb: oneLine(chapter?.blurb),
       stops: (Array.isArray(chapter?.stops) ? chapter.stops : []).map((stop) => ({
+        ...Object.fromEntries(
+          STOP_CHANGE_NOTE_KEYS.flatMap((key) => {
+            const note = normalizeStopChangeNote(stop?.[key]);
+            return note ? [[key, note]] : [];
+          }),
+        ),
         prose: truncate(cleanText(stop?.prose), MAX_PROSE_CHARS),
         title: oneLine(stop?.title),
       })),
@@ -805,6 +828,7 @@ Grouping contract:
 - ${chapterInstruction}. A chapter is a conceptual group, not a file. For one- or two-file diffs, prefer one chapter unless there are clearly separate review phases.
 - Chapter titles render in a compact top bar: keep each title to 1-2 short words and at most 16 characters, e.g. "UI", "CLI", "Tests", "Docs", "Runtime", "Cleanup".
 - Every stop must have a concise semantic title that names the review idea in roughly 2-6 words, e.g. "Prevent duplicate payments" or "Preserve offline drafts". Never use a filename or path as a stop title.
+- Every stop must have why, before, and after: one short plain sentence each, at most ${MAX_STOP_CHANGE_NOTE_CHARS} characters. why says why the change is needed; before says how the code behaved or was handled before the diff; after says how it behaves after the diff. Be concrete and to the point, do not repeat the prose, and for new code say what was missing in before.
 - A stop may contain at most ${MAX_HUNKS_PER_WALKTHROUGH_GROUP} hunkIds. Use multiple hunkIds when the prose needs those hunks read together to understand one invariant, behavior, or repeated pattern.
 - A Git hunk boundary is not a walkthrough boundary. Group hunks that only make sense together, and never create a stop whose explanation depends primarily on code assigned to another stop.
 - Generated-like files have "generated": true and one synthetic hunk per changed section. Never split them; main-path them only when they explain behavior, like snapshots proving output.

@@ -543,9 +543,15 @@ export type WalkthroughHunkGroup = {
 
 /** One stop in the main walkthrough path. */
 export type WalkthroughStop = WalkthroughHunkGroup & {
+  /** One short line on how the code behaves after the diff. */
+  after?: string;
+  /** One short line on how the code behaved, or what was missing, before the diff. */
+  before?: string;
   importance: 'critical' | 'normal' | 'context';
   /** Agent narration (markdown / inline code). */
   prose: string;
+  /** One short line on why the change is needed. */
+  why?: string;
 };
 
 /** A changed hunk group kept off the main path. */

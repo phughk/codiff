@@ -283,6 +283,37 @@
   font-weight: 600;
 }
 
+/* ---- Why / before / after notes ------------------------------------------ */
+.wt-change-notes {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: max-content minmax(0, 1fr);
+  margin: -4px 0 16px;
+}
+.wt-change-note {
+  display: contents;
+}
+.wt-change-note dt {
+  color: var(--muted);
+  font: 600 11px/1.9 var(--font-sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.wt-change-note dd {
+  color: var(--text);
+  font: 13px/1.5 var(--font-sans);
+  margin: 0;
+  text-wrap: pretty;
+}
+.wt-change-note dd code {
+  background: var(--inline-code-bg);
+  border-radius: 24px;
+  corner-shape: squircle;
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  padding: 2px 5px;
+}
+
 /* ---- Importance pill + stage header --------------------------------------- */
 .wt-stage {
   margin: 0 auto;

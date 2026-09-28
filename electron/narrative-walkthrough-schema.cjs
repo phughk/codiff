@@ -18,6 +18,15 @@ const CHANGE_TYPES = new Set([
 const MAX_WALKTHROUGH_CHAPTERS = 6;
 const MAX_WALKTHROUGH_STOPS = 14;
 const MAX_HUNKS_PER_WALKTHROUGH_GROUP = 14;
+const MAX_STOP_CHANGE_NOTE_CHARS = 160;
+
+// One short line each: why the stop's change is needed, how the code behaved
+// before the diff, and how it behaves after it.
+const stopChangeNoteProperties = {
+  after: { type: 'string' },
+  before: { type: 'string' },
+  why: { type: 'string' },
+};
 
 const hunkGroupProperties = {
   changeType: { enum: [...CHANGE_TYPES], type: 'string' },
@@ -74,6 +83,7 @@ const narrativeWalkthroughSchema = {
               additionalProperties: false,
               properties: {
                 ...hunkGroupProperties,
+                ...stopChangeNoteProperties,
                 importance: { enum: [...IMPORTANCES], type: 'string' },
                 prose: { type: 'string' },
               },
@@ -130,13 +140,16 @@ const narrativeWalkthroughGenerationSchema = {
             items: {
               additionalProperties: false,
               properties: {
+                after: { maxLength: MAX_STOP_CHANGE_NOTE_CHARS, type: 'string' },
+                before: { maxLength: MAX_STOP_CHANGE_NOTE_CHARS, type: 'string' },
                 hunkIds: hunkGroupProperties.hunkIds,
                 id: hunkGroupProperties.id,
                 importance: { enum: [...IMPORTANCES], type: 'string' },
                 prose: { type: 'string' },
                 title: { maxLength: 80, type: 'string' },
+                why: { maxLength: MAX_STOP_CHANGE_NOTE_CHARS, type: 'string' },
               },
-              required: ['id', 'hunkIds', 'importance', 'prose', 'title'],
+              required: ['id', 'hunkIds', 'importance', 'prose', 'title', 'why', 'before', 'after'],
               type: 'object',
             },
           },
@@ -216,6 +229,7 @@ module.exports = {
   MAX_WALKTHROUGH_CHAPTERS,
   MAX_WALKTHROUGH_STOPS,
   MAX_HUNKS_PER_WALKTHROUGH_GROUP,
+  MAX_STOP_CHANGE_NOTE_CHARS,
   narrativeWalkthroughResponseSchema,
   narrativeWalkthroughSchema,
 };
