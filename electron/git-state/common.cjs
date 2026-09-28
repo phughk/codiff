@@ -49,6 +49,10 @@ const getFingerprint = (value) => createHash('sha256').update(value).digest('hex
 const getGravatarHash = (email) =>
   createHash('md5').update(email.trim().toLowerCase()).digest('hex');
 
+// Codiff parses git's output, so user config such as `color.ui=always` must
+// not add ANSI escapes to it.
+const GIT_CONFIG_ARGS = ['-c', 'color.ui=never', '-c', 'color.diff=never'];
+
 /**
  * @param {string} repoPath
  * @param {ReadonlyArray<string>} args
@@ -56,7 +60,7 @@ const getGravatarHash = (email) =>
  * @returns {Promise<string>}
  */
 const git = async (repoPath, args, options = {}) => {
-  const { stdout } = await execFileAsync('git', ['-C', repoPath, ...args], {
+  const { stdout } = await execFileAsync('git', [...GIT_CONFIG_ARGS, '-C', repoPath, ...args], {
     encoding: options.encoding || 'utf8',
     maxBuffer: 1024 * 1024 * 64,
   });
@@ -65,7 +69,7 @@ const git = async (repoPath, args, options = {}) => {
 
 /** @param {string} repoPath @param {ReadonlyArray<string>} args @returns {Promise<Buffer>} */
 const gitBuffer = async (repoPath, args) => {
-  const { stdout } = await execFileAsync('git', ['-C', repoPath, ...args], {
+  const { stdout } = await execFileAsync('git', [...GIT_CONFIG_ARGS, '-C', repoPath, ...args], {
     encoding: 'buffer',
     maxBuffer: 1024 * 1024 * 64,
   });
@@ -81,7 +85,7 @@ const gitBuffer = async (repoPath, args) => {
  */
 const gitBufferWithInput = (repoPath, args, input, options = {}) =>
   new Promise((resolve, reject) => {
-    const child = spawn('git', ['-C', repoPath, ...args], {
+    const child = spawn('git', [...GIT_CONFIG_ARGS, '-C', repoPath, ...args], {
       env: options.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });

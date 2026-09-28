@@ -350,6 +350,7 @@ const findDefinitions = async (repoPath, request, options = {}) => {
     const snapshot = await resolveSearchRevision(request, repoPath);
     const args = [
       'grep',
+      '--no-color',
       '--no-recurse-submodules',
       '-n',
       '--null',
