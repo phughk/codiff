@@ -5,13 +5,38 @@ import {
   getReviewCommentRangeProps,
   toPullRequestReviewComment,
 } from '../../lib/review-comments.ts';
+import { getSourceKey } from '../../lib/source.ts';
 import type {
+  AgentReviewComment,
   PullRequestReviewEvent,
   PullRequestReviewStatus,
   RepositoryState,
   ReviewAssistantRequest,
 } from '../../types.ts';
 import { useReviewCommentDrafts } from './useReviewCommentDrafts.ts';
+
+export type AgentReviewState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { commentCount: number; status: 'ready'; summary: string }
+  | { reason: string; status: 'error' };
+
+const toAgentReviewComment = (comment: AgentReviewComment): ReviewComment => ({
+  agentReview: { originalBody: comment.body, severity: comment.severity },
+  body: comment.body,
+  filePath: comment.filePath,
+  id: crypto.randomUUID(),
+  lineNumber: comment.lineNumber,
+  sectionId: comment.sectionId,
+  side: comment.side,
+});
+
+// A rerun replaces the agent's earlier comments unless the reviewer edited them.
+const isUntouchedAgentReviewComment = (comment: ReviewComment) =>
+  comment.agentReview != null &&
+  !comment.isReadOnly &&
+  comment.remoteSubmit == null &&
+  comment.body === comment.agentReview.originalBody;
 
 type UseAppReviewCommentsOptions = {
   isReviewActionDisabled: (
@@ -28,6 +53,11 @@ export function useAppReviewComments({
   stateRef,
 }: UseAppReviewCommentsOptions) {
   const [reviewComments, setReviewComments] = useState<ReadonlyArray<ReviewComment>>([]);
+  // Keyed by source so a review never shows against a different diff.
+  const [agentReviewBySource, setAgentReviewBySource] = useState<{
+    sourceKey: string;
+    state: AgentReviewState;
+  } | null>(null);
   const [pullRequestReviewSubmitting, setPullRequestReviewSubmitting] =
     useState<PullRequestReviewEvent | null>(null);
   const commentDrafts = useReviewCommentDrafts({
@@ -131,6 +161,65 @@ export function useAppReviewComments({
         });
     },
     [reviewCommentsRef, stateRef, updateCodexReply],
+  );
+
+  const reviewWithAgent = useCallback(() => {
+    const currentState = stateRef.current;
+    if (!currentState) {
+      return;
+    }
+
+    const sourceKey = getSourceKey(currentState.source);
+    const setAgentReview = (state: AgentReviewState) =>
+      setAgentReviewBySource({ sourceKey, state });
+    const isCurrentSource = () =>
+      stateRef.current != null && getSourceKey(stateRef.current.source) === sourceKey;
+    setAgentReview({ status: 'loading' });
+    void window.codiff
+      .reviewDiffWithAgent({ source: currentState.source })
+      .then((result) => {
+        if (!isCurrentSource()) {
+          return;
+        }
+        if (result.status !== 'ready') {
+          setAgentReview({ reason: result.reason, status: 'error' });
+          return;
+        }
+
+        const comments = result.comments.map(toAgentReviewComment);
+        const changedPaths = new Set(comments.map((comment) => comment.filePath));
+        for (const comment of reviewCommentsRef.current) {
+          if (isUntouchedAgentReviewComment(comment)) {
+            changedPaths.add(comment.filePath);
+          }
+        }
+        setReviewComments((current) => [
+          ...current.filter((comment) => !isUntouchedAgentReviewComment(comment)),
+          ...comments,
+        ]);
+        for (const path of changedPaths) {
+          onCommentFileChange(path);
+        }
+        setAgentReview({
+          commentCount: comments.length,
+          status: 'ready',
+          summary: result.summary,
+        });
+      })
+      .catch((error: unknown) => {
+        if (isCurrentSource()) {
+          setAgentReview({
+            reason: error instanceof Error ? error.message : String(error),
+            status: 'error',
+          });
+        }
+      });
+  }, [onCommentFileChange, reviewCommentsRef, stateRef]);
+
+  const getAgentReviewState = useCallback(
+    (sourceKey: string): AgentReviewState =>
+      agentReviewBySource?.sourceKey === sourceKey ? agentReviewBySource.state : { status: 'idle' },
+    [agentReviewBySource],
   );
 
   const submitComment = useCallback(
@@ -285,9 +374,11 @@ export function useAppReviewComments({
   return {
     ...commentDrafts,
     askCodex,
+    getAgentReviewState,
     hasPendingReviewComments,
     pullRequestReviewSubmitting,
     reviewComments,
+    reviewWithAgent,
     setReviewComments,
     submitPendingPullRequestComment,
     submitPullRequestComment,

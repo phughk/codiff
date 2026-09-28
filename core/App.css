@@ -3541,6 +3541,25 @@ diffs-container .review-comment-thread {
   padding: 4px 7px;
 }
 
+.review-comment-header .review-comment-severity {
+  --severity-color: var(--muted);
+  background: color-mix(in srgb, var(--severity-color) 15%, transparent);
+  border-radius: 14px;
+  color: var(--severity-color);
+  corner-shape: squircle;
+  flex: none;
+  font: 600 11px/1 var(--font-sans);
+  padding: 4px 7px;
+}
+
+.review-comment-header .review-comment-severity:is(.blocker, .issue) {
+  --severity-color: var(--danger);
+}
+
+.review-comment-header .review-comment-severity:is(.suggestion, .question) {
+  --severity-color: var(--sidebar-ref);
+}
+
 .review-comment-header .general-comment-edit-actions {
   margin-left: auto;
   overflow: visible;
@@ -3995,6 +4014,60 @@ diffs-container .review-comment-thread {
 
 .review-submit-popover-submit.comment {
   color: var(--text);
+}
+
+.agent-review-button {
+  -webkit-app-region: no-drag;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  corner-shape: squircle;
+  cursor: pointer;
+  display: inline-flex;
+  flex: none;
+  font: 700 11px/1 var(--font-sans);
+  gap: 5px;
+  height: 28px;
+  justify-content: center;
+  padding: 0 8px;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.agent-review-button:hover:not(:disabled) {
+  background: rgb(127 127 127 / 0.14);
+  color: var(--sidebar-text);
+}
+
+.agent-review-button:active:not(:disabled) {
+  background: rgb(127 127 127 / 0.2);
+  color: var(--sidebar-text);
+}
+
+.agent-review-button:disabled {
+  cursor: default;
+}
+
+.agent-review-button.error {
+  color: var(--danger);
+}
+
+.agent-review-icon {
+  height: 14px;
+  width: 14px;
+}
+
+.agent-review-spinner {
+  animation: agent-review-spin 900ms linear infinite;
+}
+
+@keyframes agent-review-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .copy-comments-button:hover:not(:disabled) {

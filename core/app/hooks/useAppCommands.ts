@@ -19,6 +19,7 @@ type UseAppCommandsOptions = {
   onOpenReviewSource: (kind: OpenReviewSourceKind) => void;
   onOpenSelectedFile: () => void;
   onRefreshRepository: () => void;
+  onReviewWithAgent?: () => void;
   onToggleSidebar: () => void;
   onToggleViewed: (file: ChangedFile, isViewed: boolean, reviewIdentity: ReviewIdentity) => void;
   onToggleWordWrap: () => void;
@@ -36,6 +37,7 @@ export function useAppCommands({
   onOpenReviewSource,
   onOpenSelectedFile,
   onRefreshRepository,
+  onReviewWithAgent,
   onToggleSidebar,
   onToggleViewed,
   onToggleWordWrap,
@@ -228,6 +230,16 @@ export function useAppCommands({
         id: 'reload',
         title: 'Refresh Changes',
       }),
+      ...(onReviewWithAgent
+        ? [
+            registry.register({
+              description: () => 'Ask the agent to leave inline review comments',
+              execute: onReviewWithAgent,
+              id: 'review-with-agent',
+              title: 'Review Diff with Agent',
+            }),
+          ]
+        : []),
     ];
     setCommands(registry.commands);
 
@@ -244,6 +256,7 @@ export function useAppCommands({
     onOpenReviewSource,
     onOpenSelectedFile,
     onRefreshRepository,
+    onReviewWithAgent,
     onToggleSidebar,
     onToggleViewed,
     onToggleWordWrap,

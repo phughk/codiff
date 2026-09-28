@@ -41,10 +41,6 @@ import {
   type ReactNode,
   type SyntheticEvent,
 } from 'react';
-import claudeIconUrl from '../../assets/claude.svg';
-import codexIconUrl from '../../assets/codex.svg';
-import opencodeIconUrl from '../../assets/opencode.svg';
-import piIconUrl from '../../assets/pi.svg';
 import { getShortcutLabel, matchesShortcut } from '../../config/keymap.ts';
 import type { CodiffDiffStyle, CodiffKeymap } from '../../config/types.ts';
 import type {
@@ -107,6 +103,7 @@ import { getReviewIdentity, isReviewIdentityViewed } from '../../lib/review-iden
 import { applySearchHighlights } from '../../lib/search-highlights.ts';
 import { getSourceKey } from '../../lib/source.ts';
 import type {
+  AgentReviewSeverity,
   ChangedFile,
   CodiffPreferences,
   CommitMetadata,
@@ -124,6 +121,7 @@ import type {
 } from '../../types.ts';
 import { useCodeViewAnnotations } from '../hooks/useCodeViewAnnotations.ts';
 import { useCodeViewPlaceholderFile } from '../hooks/useCodeViewPlaceholderFile.ts';
+import { agentIconUrl } from './agentIcon.ts';
 import { Avatar } from './Avatar.tsx';
 import { Button } from './Button.tsx';
 import { DefinitionPopover } from './DefinitionPopover.tsx';
@@ -390,14 +388,12 @@ function AgentAvatar({ agentId }: { agentId: 'codex' | 'claude' | 'opencode' | '
   );
 }
 
-const agentIconUrl = (agentId: 'codex' | 'claude' | 'opencode' | 'pi') => {
-  return agentId === 'pi'
-    ? piIconUrl
-    : agentId === 'opencode'
-      ? opencodeIconUrl
-      : agentId === 'claude'
-        ? claudeIconUrl
-        : codexIconUrl;
+const agentReviewSeverityLabel: Record<AgentReviewSeverity, string> = {
+  blocker: 'Blocker',
+  issue: 'Issue',
+  nit: 'Nit',
+  question: 'Question',
+  suggestion: 'Suggestion',
 };
 
 const canAskCodexForComment = (comment: ReviewComment) =>
@@ -1673,6 +1669,8 @@ function ReviewCommentEditor({
       <div className="review-comment">
         {comment.author ? (
           <ReviewAvatar author={comment.author} />
+        ) : comment.agentReview ? (
+          <AgentAvatar agentId={agentId} />
         ) : (
           <IdentityReviewAvatar identity={identity} />
         )}
@@ -1688,6 +1686,14 @@ function ReviewCommentEditor({
             }${comment.isReadOnly ? ' read-only' : ''}`}
           >
             <strong>{displayName}</strong>
+            {comment.agentReview ? (
+              <span
+                className={`review-comment-severity ${comment.agentReview.severity}`}
+                title={`Left by ${agentLabel} when reviewing the diff. Edit it before posting, or delete it.`}
+              >
+                {agentReviewSeverityLabel[comment.agentReview.severity]}
+              </span>
+            ) : null}
             {comment.isPending ? (
               <span
                 className="review-comment-pending"
@@ -2085,7 +2091,9 @@ function ReviewCommentThreadGroup({
       {comments.map((comment) => {
         const displayName = comment.author
           ? getReviewAuthorDisplayName(comment.author)
-          : getGitIdentityDisplayName(identity);
+          : comment.agentReview
+            ? agentLabel
+            : getGitIdentityDisplayName(identity);
 
         return (
           <ReviewCommentEditor

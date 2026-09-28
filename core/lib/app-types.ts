@@ -1,6 +1,7 @@
 import type { CodeViewHandle } from '@pierre/diffs/react';
 import type { ReactNode } from 'react';
 import type {
+  AgentReviewSeverity,
   ChangedFile,
   DiffSection,
   NarrativeWalkthrough,
@@ -94,6 +95,11 @@ export type DiffLineCount = {
 };
 
 export type ReviewComment = {
+  /** Set on comments an agent left from Review with agent; `body` is the agent's text until edited. */
+  agentReview?: {
+    originalBody: string;
+    severity: AgentReviewSeverity;
+  };
   anchor?: 'file' | 'line';
   author?: PullRequestExistingReviewComment['author'];
   body: string;

@@ -58,6 +58,7 @@ const {
   writeConfig,
 } = require('./config.cjs');
 const { readReviewAssistantReply } = require('./review-assist.cjs');
+const { readAgentReview } = require('./agent-review.cjs');
 const { releasePageUrl } = require('./update-check.cjs');
 const { createUpdater, resolveUpdateStrategy } = require('./updater.cjs');
 const { parseReviewUrl, resolveReviewUrl } = require('./review-source.cjs');
@@ -1747,6 +1748,17 @@ ipcMain.handle('codiff:askReviewAssistant', async (event, request) => {
   );
   const agent = resolveWindowAgent(event.sender.id);
   return readReviewAssistantReply(state, request, agent, getAgentOptions(agent));
+});
+
+ipcMain.handle('codiff:reviewDiffWithAgent', async (event, request) => {
+  const repositoryPath = windowRepositories.get(event.sender.id) || getLaunchPath();
+  const launchOptions = windowLaunchOptions.get(event.sender.id);
+  const state = await readRepositoryStateWithConfig(
+    repositoryPath,
+    request?.source || launchOptions?.source,
+  );
+  const agent = resolveWindowAgent(event.sender.id);
+  return readAgentReview(state, agent, getAgentOptions(agent));
 });
 
 ipcMain.handle('codiff:createWalkthroughCommit', async (event, request) => {

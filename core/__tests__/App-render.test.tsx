@@ -240,6 +240,10 @@ const createCodiffMock = (overrides: Partial<Window['codiff']> = {}): Window['co
   openRepositoryFolder: vi.fn(async () => {}),
   resetCodeFontSize: vi.fn(async () => {}),
   resolvePullRequestUrl: vi.fn(async () => 'https://github.com/owner/repo/pull/1'),
+  reviewDiffWithAgent: vi.fn(async () => ({
+    reason: 'Unavailable in tests.',
+    status: 'unavailable' as const,
+  })),
   saveMarkdownDocument: vi.fn(async (request) => ({
     document: {
       content: request.content,

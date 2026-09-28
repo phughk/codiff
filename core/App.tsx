@@ -10,6 +10,7 @@ import { OpenReviewSourceDialog } from './app/components/OpenReviewSourceDialog.
 import { OpenReviewSourceMenu } from './app/components/OpenReviewSourceMenu.tsx';
 import {
   AgentUnavailablePanel,
+  AgentReviewButton,
   CopyCommentsButton,
   DiffSearchPanel,
   FirstRunPanel,
@@ -271,11 +272,13 @@ export default function App() {
     deleteComment,
     focusCommentId,
     focusCommentRequest,
+    getAgentReviewState,
     hasPendingReviewComments,
     pullRequestReviewSubmitting,
     resetCommentFocus,
     reviewComments,
     reviewCommentsRef,
+    reviewWithAgent,
     setReviewComments,
     submitPendingPullRequestComment,
     submitPullRequestComment,
@@ -1544,6 +1547,7 @@ export default function App() {
     onOpenReviewSource: showOpenReviewSourceDialog,
     onOpenSelectedFile: openSelectedFile,
     onRefreshRepository: refreshRepository,
+    onReviewWithAgent: reviewWithAgent,
     onToggleSidebar: toggleSidebar,
     onToggleViewed: toggleViewed,
     onToggleWordWrap: toggleWordWrap,
@@ -1832,12 +1836,21 @@ export default function App() {
       <div aria-hidden className="window-drag-region" />
       <ReviewTopBar
         actions={
-          <CopyCommentsButton
-            comments={isSwitchingSource ? emptyReviewComments : reviewComments}
-            files={orderedFiles}
-            reviewCommentsPrefix={preferences.reviewCommentsPrefix}
-            showWhitespace={showWhitespace}
-          />
+          <>
+            <AgentReviewButton
+              agentId={activeAgentBackend}
+              agentLabel={agentLabel}
+              disabled={isSwitchingSource || state.files.length === 0}
+              onReview={reviewWithAgent}
+              state={getAgentReviewState(getSourceKey(state.source))}
+            />
+            <CopyCommentsButton
+              comments={isSwitchingSource ? emptyReviewComments : reviewComments}
+              files={orderedFiles}
+              reviewCommentsPrefix={preferences.reviewCommentsPrefix}
+              showWhitespace={showWhitespace}
+            />
+          </>
         }
         context={
           <>

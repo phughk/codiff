@@ -16,6 +16,7 @@ if (document.documentElement) {
 const codiff = {
   applyUpdate: () => ipcRenderer.invoke('codiff:applyUpdate'),
   askReviewAssistant: (request) => ipcRenderer.invoke('codiff:askReviewAssistant', request),
+  reviewDiffWithAgent: (request) => ipcRenderer.invoke('codiff:reviewDiffWithAgent', request),
   dismissUpdate: () => ipcRenderer.invoke('codiff:dismissUpdate'),
   createWalkthroughCommit: (request) =>
     ipcRenderer.invoke('codiff:createWalkthroughCommit', request),

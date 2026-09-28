@@ -1,6 +1,8 @@
 import type { NativeKeyboardLayout } from './config/keyboard-layout.ts';
 import type { CodiffConfig } from './config/types.ts';
 import type {
+  AgentReviewRequest,
+  AgentReviewResult,
   AgentSkillStatus,
   CodiffFeatureFlags,
   CodiffLaunchOptions,
@@ -107,6 +109,7 @@ declare global {
       openRepositoryFolder: () => Promise<void>;
       resetCodeFontSize: () => Promise<void>;
       resolvePullRequestUrl: (value: string) => Promise<string>;
+      reviewDiffWithAgent: (request: AgentReviewRequest) => Promise<AgentReviewResult>;
       saveMarkdownDocument: (
         request: SaveMarkdownDocumentRequest,
       ) => Promise<SaveMarkdownDocumentResult>;

@@ -31,6 +31,8 @@ import type {
   PullRequestReviewEvent,
   PullRequestReviewStatus,
 } from '../../types.ts';
+import type { AgentReviewState } from '../hooks/useAppReviewComments.ts';
+import { agentIconUrl } from './agentIcon.ts';
 import { Button, buttonVariants } from './Button.tsx';
 import { useCopiedState } from './useCopiedState.ts';
 
@@ -391,6 +393,62 @@ export function DiffSearchPanel({
         <X aria-hidden className="diff-search-icon" size={15} weight="bold" />
       </button>
     </div>
+  );
+}
+
+const getAgentReviewButtonTitle = (agentLabel: string, state: AgentReviewState) => {
+  switch (state.status) {
+    case 'loading':
+      return `${agentLabel} is reviewing the diff…`;
+    case 'ready':
+      return `${state.summary ? `${state.summary}\n\n` : ''}${agentLabel} left ${
+        state.commentCount
+      } ${state.commentCount === 1 ? 'comment' : 'comments'}. Click to review again.`;
+    case 'error':
+      return `${agentLabel} review failed: ${state.reason}\n\nClick to try again.`;
+    default:
+      return `Ask ${agentLabel} to review the diff and leave inline comments`;
+  }
+};
+
+export function AgentReviewButton({
+  agentId,
+  agentLabel,
+  disabled = false,
+  onReview,
+  state,
+}: {
+  agentId: 'codex' | 'claude' | 'opencode' | 'pi';
+  agentLabel: string;
+  disabled?: boolean;
+  onReview: () => void;
+  state: AgentReviewState;
+}) {
+  const loading = state.status === 'loading';
+  return (
+    <button
+      aria-busy={loading}
+      className={`agent-review-button${state.status === 'error' ? ' error' : ''}`}
+      disabled={disabled || loading}
+      onClick={onReview}
+      title={getAgentReviewButtonTitle(agentLabel, state)}
+      type="button"
+    >
+      {loading ? (
+        <CircleNotch aria-hidden className="agent-review-spinner" size={14} weight="bold" />
+      ) : state.status === 'error' ? (
+        <WarningOctagon aria-hidden size={14} weight="bold" />
+      ) : (
+        <img
+          alt=""
+          aria-hidden
+          className="agent-review-icon"
+          draggable={false}
+          src={agentIconUrl(agentId)}
+        />
+      )}
+      <span>{loading ? 'Reviewing…' : 'Review'}</span>
+    </button>
   );
 }
 

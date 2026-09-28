@@ -260,3 +260,54 @@ test('app review comments add drafts to the pending review and publish them with
   expect(getState().reviewComments[0]?.isPending).toBeUndefined();
   expect(getState().hasPendingReviewComments).toBe(false);
 });
+
+test('agent review adds comments and a rerun replaces only untouched ones', async () => {
+  const agentComment = {
+    body: 'This drops the error.',
+    filePath: 'src/app.ts',
+    lineNumber: 4,
+    sectionId: 'src/app.ts:unstaged',
+    severity: 'issue' as const,
+    side: 'additions' as const,
+  };
+  const reviewDiffWithAgent = vi.fn(async () => ({
+    comments: [agentComment, { ...agentComment, body: 'Rename this.', severity: 'nit' as const }],
+    status: 'ready' as const,
+    summary: 'One issue.',
+  }));
+  window.codiff = { reviewDiffWithAgent } as unknown as Window['codiff'];
+  await using view = await renderAppReviewComments(workingTreeState);
+  const { getState } = view;
+
+  await act(async () => {
+    getState().reviewWithAgent();
+  });
+  expect(reviewDiffWithAgent).toHaveBeenCalledWith({ source: workingTreeState.source });
+  await waitFor(() => {
+    expect(getState().getAgentReviewState('working-tree')).toEqual({
+      commentCount: 2,
+      status: 'ready',
+      summary: 'One issue.',
+    });
+  });
+  expect(getState().reviewComments.map((candidate) => candidate.agentReview?.severity)).toEqual([
+    'issue',
+    'nit',
+  ]);
+
+  const edited = getState().reviewComments[0]!;
+  await act(async () => {
+    getState().updateComment(edited.id, 'This drops the error; rethrow it.');
+  });
+  await act(async () => {
+    getState().reviewWithAgent();
+  });
+  await waitFor(() => {
+    expect(reviewDiffWithAgent).toHaveBeenCalledTimes(2);
+    expect(getState().reviewComments.map((candidate) => candidate.body)).toEqual([
+      'This drops the error; rethrow it.',
+      'This drops the error.',
+      'Rename this.',
+    ]);
+  });
+});

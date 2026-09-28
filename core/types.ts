@@ -716,6 +716,34 @@ export type ReviewAssistantResult =
       status: 'unavailable';
     };
 
+export type AgentReviewSeverity = 'blocker' | 'issue' | 'suggestion' | 'question' | 'nit';
+
+/** An inline comment an agent left when asked to review the whole diff. */
+export type AgentReviewComment = {
+  body: string;
+  filePath: string;
+  lineNumber: number;
+  sectionId: string;
+  severity: AgentReviewSeverity;
+  side: 'additions' | 'deletions';
+};
+
+export type AgentReviewRequest = {
+  source?: ReviewSource;
+};
+
+export type AgentReviewResult =
+  | {
+      comments: ReadonlyArray<AgentReviewComment>;
+      status: 'ready';
+      summary: string;
+    }
+  | {
+      code?: string;
+      reason: string;
+      status: 'unavailable';
+    };
+
 export type GitIdentity = {
   email: string;
   gravatarUrl?: string;
