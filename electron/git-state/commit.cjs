@@ -2,6 +2,7 @@
 
 const { fileSort, getFingerprint, getGravatarHash, git, normalizeStatus } = require('./common.cjs');
 const {
+  getComparisonRevision,
   readComparisonImageContent,
   readComparisonSectionContent,
   readComparisonState,
@@ -731,6 +732,34 @@ const listRepositoryHistory = async (launchPath, limit = 200, ref = 'HEAD') => {
   };
 };
 
+/**
+ * Re-resolve a source whose refs can move (a branch comparison or a range) and
+ * return the revision its diff would be read from now. Commits, pull requests
+ * and the working tree return `null`: they are immutable, remote or covered by
+ * the repository watcher.
+ *
+ * @param {string} launchPath
+ * @param {ReviewSource} source
+ * @returns {Promise<string | null>}
+ */
+const readSourceRevision = async (launchPath, source) => {
+  const comparisonSource =
+    source.type === 'branch' ||
+    source.type === 'branch-diff' ||
+    source.type === 'branch-working-tree'
+      ? /** @type {BranchSource} */ ({ ref: source.ref, type: 'branch' })
+      : source.type === 'range'
+        ? source
+        : null;
+  if (!comparisonSource) {
+    return null;
+  }
+
+  const repoRoot = (await git(launchPath, ['rev-parse', '--show-toplevel'])).trim();
+  const { newRef, oldRef } = await resolveComparisonSource(repoRoot, comparisonSource);
+  return getComparisonRevision(newRef, oldRef);
+};
+
 module.exports = {
   listRepositoryHistory,
   readBranchImageContent,
@@ -746,4 +775,5 @@ module.exports = {
   readRangeImageContent,
   readRangeSectionContent,
   readRangeState,
+  readSourceRevision,
 };

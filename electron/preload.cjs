@@ -37,6 +37,7 @@ const codiff = {
   getRepositoryHistory: (limit, source) =>
     ipcRenderer.invoke('codiff:getRepositoryHistory', limit, source),
   getRepositoryState: (source) => ipcRenderer.invoke('codiff:getRepositoryState', source),
+  getSourceRevision: (source) => ipcRenderer.invoke('codiff:getSourceRevision', source),
   getTerminalHelperStatus: () => ipcRenderer.invoke('codiff:getTerminalHelperStatus'),
   getUpdateStatus: () => ipcRenderer.invoke('codiff:getUpdateStatus'),
   getNarrativeWalkthrough: (source, options) =>

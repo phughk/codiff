@@ -18,6 +18,14 @@ const { createEmptyFileContent, readGitFiles } = require('./git-files.cjs');
  * @typedef {import('./common.cjs').StatusItem} StatusItem
  */
 
+/**
+ * The resolved commits a comparison was read from. Comparing it with a fresh
+ * resolution of the same source tells whether the diff has moved since.
+ *
+ * @param {string} newRef @param {string | undefined} oldRef
+ */
+const getComparisonRevision = (newRef, oldRef) => `${oldRef ?? ''}..${newRef}`;
+
 /** @param {string} newRef @param {string | undefined} oldRef @param {ReadonlyArray<string>} paths */
 const createComparisonPatchArgs = (newRef, oldRef, paths) =>
   oldRef
@@ -203,6 +211,7 @@ const readComparisonState = async ({ launchPath, newRef, oldRef, repoRoot, sourc
     files,
     generatedAt: Date.now(),
     launchPath,
+    revision: getComparisonRevision(newRef, oldRef),
     root: repoRoot,
     source,
   };
@@ -300,6 +309,7 @@ const readComparisonImageContent = async (
 };
 
 module.exports = {
+  getComparisonRevision,
   readComparisonImageContent,
   readComparisonSectionContent,
   readComparisonState,

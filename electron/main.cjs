@@ -22,6 +22,7 @@ const {
   readDiffSectionContent,
   readGitIdentity,
   readRepositoryState,
+  readSourceRevision,
   readWalkthroughRepositoryState,
   submitPullRequestComment,
   submitPullRequestReview,
@@ -1452,6 +1453,12 @@ ipcMain.handle('codiff:getRepositoryState', async (event, source) => {
   void resetRepositoryWatcher(event.sender.id, state.root);
   return state;
 });
+
+ipcMain.handle('codiff:getSourceRevision', (event, source) =>
+  source && typeof source === 'object'
+    ? readSourceRevision(windowRepositories.get(event.sender.id) || getLaunchPath(), source)
+    : null,
+);
 
 ipcMain.handle('codiff:resolvePullRequestUrl', (event, value) => {
   const input = typeof value === 'string' ? value.trim() : '';

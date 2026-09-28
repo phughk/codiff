@@ -198,6 +198,7 @@ const createCodiffMock = (overrides: Partial<Window['codiff']> = {}): Window['co
     root: '/repo',
   })),
   getRepositoryState: vi.fn(async () => repositoryState),
+  getSourceRevision: vi.fn(async () => null),
   getTerminalHelperStatus: vi.fn(async () => ({
     command: 'codiff',
     installed: true,

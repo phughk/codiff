@@ -106,6 +106,7 @@ type GitStateModule = {
     source?: ReviewSource,
     options?: { showWhitespace?: boolean },
   ) => Promise<RepositoryState>;
+  readSourceRevision: (launchPath: string, source: ReviewSource) => Promise<string | null>;
   readWalkthroughRepositoryState: (
     launchPath: string,
     source?: ReviewSource,
@@ -159,6 +160,7 @@ const {
   readDiffSectionContent,
   readRepositoryChangeSignature,
   readRepositoryState,
+  readSourceRevision,
   readWalkthroughRepositoryState,
   readWorkingTreeState,
   resolvePullRequestContentRefs,
@@ -1379,6 +1381,45 @@ test('readRepositoryState opens branch refs as current branch diffs against the 
       'feature two',
       'feature one',
     ]);
+  });
+});
+
+test('readSourceRevision detects when a branch comparison or range moves', async () => {
+  await withRepo(async (repo) => {
+    await writeRepoFile(repo, 'file.txt', 'base\n');
+    await commitAll(repo, 'initial commit');
+    const baseBranch = (await git(repo, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
+    await git(repo, ['checkout', '-b', 'feature']);
+    await writeRepoFile(repo, 'file.txt', 'feature one\n');
+    await commitAll(repo, 'feature one');
+
+    const branchState = await readRepositoryState(repo, { ref: baseBranch, type: 'branch' });
+    const rangeSource = {
+      base: baseBranch,
+      head: 'feature',
+      symmetric: true,
+      type: 'range',
+    } satisfies ReviewSource;
+    const rangeState = await readRepositoryState(repo, rangeSource);
+    const commitState = await readRepositoryState(repo, { ref: 'HEAD', type: 'commit' });
+
+    expect(branchState.revision).toBeTruthy();
+    expect(await readSourceRevision(repo, branchState.source)).toBe(branchState.revision);
+    expect(await readSourceRevision(repo, rangeSource)).toBe(rangeState.revision);
+    expect(await readSourceRevision(repo, commitState.source)).toBeNull();
+    expect(await readSourceRevision(repo, { type: 'working-tree' })).toBeNull();
+
+    await writeRepoFile(repo, 'file.txt', 'feature two\n');
+    await commitAll(repo, 'feature two');
+
+    const nextRevision = await readSourceRevision(repo, branchState.source);
+    expect(nextRevision).not.toBe(branchState.revision);
+    expect(await readSourceRevision(repo, rangeSource)).not.toBe(rangeState.revision);
+
+    // Resyncing re-resolves the branch, so the refreshed state matches the new revision.
+    const refreshedState = await readRepositoryState(repo, { ref: baseBranch, type: 'branch' });
+    expect(refreshedState.revision).toBe(nextRevision);
+    expect(refreshedState.files[0].sections[0].newFile?.contents).toBe('feature two\n');
   });
 });
 

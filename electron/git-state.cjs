@@ -16,6 +16,7 @@ const {
   readRangeImageContent,
   readRangeSectionContent,
   readRangeState,
+  readSourceRevision,
 } = require('./git-state/commit.cjs');
 const { parseRepositoryWatcherStatus } = require('./repository-watcher.cjs');
 const {
@@ -248,6 +249,7 @@ module.exports = {
   readCommitState,
   readPullRequestState,
   readRepositoryState,
+  readSourceRevision,
   readWalkthroughRepositoryState,
   readWorkingTreeState,
   resolvePullRequestContentRefs,

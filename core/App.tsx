@@ -45,6 +45,7 @@ import {
 } from './app/hooks/useDocumentAppearance.ts';
 import { useResizableSidebar } from './app/hooks/useResizableSidebar.ts';
 import { useReviewFileState } from './app/hooks/useReviewState.ts';
+import { useSourceRevisionWatcher } from './app/hooks/useSourceRevisionWatcher.ts';
 import { createDefaultConfig } from './config/defaults.ts';
 import { getShortcutLabel } from './config/keymap.ts';
 import type { CodiffConfig } from './config/types.ts';
@@ -209,6 +210,7 @@ export default function App() {
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [state, setState] = useState<RepositoryState | null>(null);
+  const sourceRevisionChanged = useSourceRevisionWatcher(state, pendingSource != null);
   const [terminalHelperInstalling, setTerminalHelperInstalling] = useState(false);
   const [terminalHelperStatus, setTerminalHelperStatus] = useState<TerminalHelperStatus>(
     defaultTerminalHelperStatus,
@@ -1803,6 +1805,10 @@ export default function App() {
       value: 'history',
     },
   ] satisfies ReadonlyArray<ReviewModeItem<typeof sidebarMode>>;
+  const displayedSourceType = (pendingSource ?? state.source).type;
+  const showLocalChangesBanner =
+    localChangesDetected &&
+    (displayedSourceType === 'working-tree' || displayedSourceType === 'branch-working-tree');
 
   return (
     <div
@@ -1882,12 +1888,9 @@ export default function App() {
         )})`}
       />
       <RepositoryChangeBanner
+        change={showLocalChangesBanner ? 'local' : 'source'}
         onRefresh={refreshRepository}
-        visible={
-          localChangesDetected &&
-          ((pendingSource ?? state.source).type === 'working-tree' ||
-            (pendingSource ?? state.source).type === 'branch-working-tree')
-        }
+        visible={showLocalChangesBanner || sourceRevisionChanged}
       />
       <WalkthroughOutdatedBanner
         onDismiss={() => setWalkthroughFileError(null)}

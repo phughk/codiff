@@ -9,6 +9,8 @@ type SourceCapabilities = {
   emptyTitle: string;
   historySource: boolean;
   lazyDiffContent: boolean;
+  /** Whether the refs behind the diff can move, so it can go stale while open. */
+  movableRefs: boolean;
   preloadDiffSearchContent: boolean;
   startInHistoryWhenEmpty: boolean;
   viewedFileState: boolean;
@@ -19,6 +21,7 @@ const sourceCapabilitiesByType = {
     emptyTitle: 'No branch changes',
     historySource: true,
     lazyDiffContent: true,
+    movableRefs: true,
     preloadDiffSearchContent: true,
     startInHistoryWhenEmpty: true,
     viewedFileState: false,
@@ -27,6 +30,7 @@ const sourceCapabilitiesByType = {
     emptyTitle: 'No branch changes',
     historySource: true,
     lazyDiffContent: true,
+    movableRefs: true,
     preloadDiffSearchContent: true,
     startInHistoryWhenEmpty: true,
     viewedFileState: false,
@@ -35,6 +39,7 @@ const sourceCapabilitiesByType = {
     emptyTitle: 'No changes',
     historySource: true,
     lazyDiffContent: true,
+    movableRefs: true,
     preloadDiffSearchContent: true,
     startInHistoryWhenEmpty: true,
     viewedFileState: true,
@@ -43,6 +48,7 @@ const sourceCapabilitiesByType = {
     emptyTitle: 'No changes in commit',
     historySource: false,
     lazyDiffContent: true,
+    movableRefs: false,
     preloadDiffSearchContent: false,
     startInHistoryWhenEmpty: false,
     viewedFileState: false,
@@ -51,6 +57,7 @@ const sourceCapabilitiesByType = {
     emptyTitle: 'No review changes',
     historySource: true,
     lazyDiffContent: false,
+    movableRefs: false,
     preloadDiffSearchContent: false,
     startInHistoryWhenEmpty: false,
     viewedFileState: false,
@@ -59,6 +66,7 @@ const sourceCapabilitiesByType = {
     emptyTitle: 'No changes in range',
     historySource: false,
     lazyDiffContent: true,
+    movableRefs: true,
     preloadDiffSearchContent: false,
     startInHistoryWhenEmpty: false,
     viewedFileState: false,
@@ -67,6 +75,7 @@ const sourceCapabilitiesByType = {
     emptyTitle: 'No local changes',
     historySource: false,
     lazyDiffContent: true,
+    movableRefs: false,
     preloadDiffSearchContent: true,
     startInHistoryWhenEmpty: true,
     viewedFileState: true,
@@ -129,13 +138,22 @@ export const getSourceLabel = (source: ReviewSource) =>
 export const getHistorySource = (source: ReviewSource): ReviewSource | undefined =>
   getSourceCapabilities(source).historySource ? source : undefined;
 
+// Refreshing re-resolves a branch comparison against the branch's current
+// commits instead of re-reading the snapshot it was first resolved to.
 export const getRefreshSource = (source: ReviewSource): ReviewSource =>
   source.type === 'branch-working-tree'
     ? {
         ref: source.ref,
         type: 'branch-working-tree',
       }
-    : source;
+    : source.type === 'branch-diff'
+      ? {
+          ref: source.ref,
+          type: 'branch',
+        }
+      : source;
+
+export const hasMovableRefs = (source: ReviewSource) => getSourceCapabilities(source).movableRefs;
 
 export const supportsLazyDiffContent = (source: ReviewSource) =>
   getSourceCapabilities(source).lazyDiffContent;

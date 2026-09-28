@@ -122,7 +122,11 @@ The command bar includes actions for common review workflows:
 - Toggle Diff Layout, with the target layout action shown as the hint
 - Open the currently selected file in your editor
 - Toggle Sidebar
-- Reload Window
+- Refresh Changes
+
+When a branch comparison or range changes while it is open, for example after a new commit, a
+rebase or a fetch, Codiff shows a banner to resync the view. Refresh Changes (<kbd>Cmd+R</kbd>)
+resyncs at any time, including pull requests.
 
 ## Configuration
 

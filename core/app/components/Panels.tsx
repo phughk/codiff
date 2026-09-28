@@ -50,9 +50,11 @@ export function ReviewSourceLoading() {
 }
 
 export function RepositoryChangeBanner({
+  change = 'local',
   onRefresh,
   visible,
 }: {
+  change?: 'local' | 'source';
   onRefresh: () => void;
   visible: boolean;
 }) {
@@ -67,10 +69,21 @@ export function RepositoryChangeBanner({
   return (
     <div aria-live="polite" className={`repository-change-banner${isVisible ? ' visible' : ''}`}>
       <span className="repository-change-banner-content">
-        <span>Local changes detected,</span>
-        <button className="repository-change-reload" onClick={onRefresh} type="button">
-          refresh to see them.
-        </button>
+        {change === 'source' ? (
+          <>
+            <span>This diff has changed,</span>
+            <button className="repository-change-reload" onClick={onRefresh} type="button">
+              resync to update it.
+            </button>
+          </>
+        ) : (
+          <>
+            <span>Local changes detected,</span>
+            <button className="repository-change-reload" onClick={onRefresh} type="button">
+              refresh to see them.
+            </button>
+          </>
+        )}
       </span>
       <button
         aria-label="Dismiss update banner"

@@ -74,6 +74,7 @@ declare global {
       getPreferences: () => Promise<CodiffPreferences>;
       getRepositoryHistory: (limit?: number, source?: ReviewSource) => Promise<RepositoryHistory>;
       getRepositoryState: (source?: ReviewSource) => Promise<RepositoryState>;
+      getSourceRevision: (source: ReviewSource) => Promise<string | null>;
       getTerminalHelperStatus: () => Promise<TerminalHelperStatus>;
       getUpdateStatus: () => Promise<CodiffUpdateStatus>;
       increaseCodeFontSize: () => Promise<void>;

@@ -247,6 +247,11 @@ export type RepositoryState = {
   generatedAt: number;
   launchPath: string;
   reviewComments?: ReadonlyArray<PullRequestExistingReviewComment>;
+  /**
+   * The resolved commits a comparison was read from (`<old>..<new>`). Sources
+   * whose refs can move are re-resolved against it to detect a changed diff.
+   */
+  revision?: string;
   root: string;
   source: ReviewSource;
 };
