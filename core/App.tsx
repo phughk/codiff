@@ -1740,6 +1740,9 @@ export default function App() {
       void window.codiff.openFile(candidate.path, candidate.lineNumber).catch(() => {});
     },
     onOpenFile: openFile,
+    onOpenInEditor: (path: string, lineNumber?: number) => {
+      void window.codiff.openFile(path, lineNumber).catch(() => {});
+    },
     onRefreshMarkdown: refreshMarkdownFile,
     onSaveCommentEdit: updateComment,
     onSelectPathFromScroll: updateSelectedPathFromScroll,

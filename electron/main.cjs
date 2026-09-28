@@ -79,6 +79,7 @@ const {
   getLaunchPath,
 } = require('./main/command-line.cjs');
 const { createSkillInstaller } = require('./main/agent-skill.cjs');
+const { createEditorCheckoutResolver } = require('./main/editor-checkout.cjs');
 const { createEditorOpener } = require('./main/editor.cjs');
 const { createDefinitionSearchCoordinator } = require('./definition-search.cjs');
 const { createTerminalHelper } = require('./main/terminal-helper.cjs');
@@ -133,6 +134,8 @@ const root = dirname(__dirname);
 const windowIdentities = new Map();
 /** @type {Map<number, string>} */
 const windowRepositories = new Map();
+/** @type {Map<number, ReviewSource>} */
+const windowSources = new Map();
 /** @type {Map<number, CodiffLaunchOptions>} */
 const windowLaunchOptions = new Map();
 /** @type {Map<number, Promise<RepositoryState>>} */
@@ -219,6 +222,7 @@ const { openFileInEditor } = createEditorOpener({
   getEditorCommand: () => config.settings.editorCommand,
   shell,
 });
+const { resolveEditorRoot } = createEditorCheckoutResolver();
 const definitionSearchCoordinator = createDefinitionSearchCoordinator();
 
 const openConfigFile = async () => {
@@ -241,6 +245,7 @@ const getMarkdownDocumentContext = (webContentsId) => ({
 /** @param {number} webContentsId @param {RepositoryState} state */
 const storeResolvedRepositoryState = (webContentsId, state) => {
   windowRepositories.set(webContentsId, state.root);
+  windowSources.set(webContentsId, state.source);
   const browserWindow = BrowserWindow.getAllWindows().find(
     (window) => window.webContents.id === webContentsId,
   );
@@ -1027,6 +1032,7 @@ const createWindow = (
     windowInitialRepositoryStates.delete(webContentsId);
     walkthroughProgressGenerations.delete(webContentsId);
     windowRepositories.delete(webContentsId);
+    windowSources.delete(webContentsId);
     windowLaunchOptions.delete(webContentsId);
   });
   window.webContents.on('render-process-gone', () => {
@@ -1875,15 +1881,22 @@ ipcMain.handle('codiff:findDefinitions', (event, request) =>
 ipcMain.handle('codiff:openFile', async (event, filePath, lineNumber) => {
   const repositoryRoot = getWindowRepositoryRoot(event.sender.id);
   const repositoryFilePath = validateRepositoryPath(filePath);
-  const absolutePath = resolve(repositoryRoot, repositoryFilePath);
+  // Open the files as they are in the reviewed source: a commit or pull request
+  // that is not checked out gets its own worktree instead of showing whatever
+  // the working tree has at that path.
+  const editorRoot = await resolveEditorRoot(
+    repositoryRoot,
+    windowSources.get(event.sender.id),
+  ).catch(() => repositoryRoot);
+  const absolutePath = resolve(editorRoot, repositoryFilePath);
 
   if (existsSync(absolutePath)) {
     await openFileInEditor(absolutePath, {
       lineNumber: Number.isSafeInteger(lineNumber) && lineNumber > 0 ? lineNumber : undefined,
-      repoPath: repositoryRoot,
+      repoPath: editorRoot,
     });
   } else {
-    await shell.openPath(repositoryRoot);
+    await shell.openPath(editorRoot);
   }
 });
 

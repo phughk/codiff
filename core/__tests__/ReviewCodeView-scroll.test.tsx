@@ -1637,6 +1637,45 @@ test('review comment typing stays local until a comment action commits it', asyn
   expect(onAskCodex).toHaveBeenCalledWith('comment-1');
 });
 
+test.for([
+  ['additions', 1],
+  ['deletions', undefined],
+] as const)(
+  'opens the commented %s line in the editor from the comment actions',
+  async ([side, expectedLine]) => {
+    const file = createChangedFile('src/comment.ts');
+    const onOpenInEditor = vi.fn();
+    await using view = await renderReact(
+      <ReviewCodeViewHarness
+        comments={[
+          {
+            body: '',
+            filePath: file.path,
+            id: 'comment-1',
+            lineNumber: 1,
+            sectionId: file.sections[0].id,
+            side,
+          },
+        ]}
+        diffStyle="unified"
+        files={[file]}
+        onOpenInEditor={onOpenInEditor}
+      />,
+    );
+    const openButton = [...view.container.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) => button.textContent === 'Open' && button.closest('.review-comment'),
+    );
+    if (!openButton) {
+      throw new Error('Expected Open button beside Ask.');
+    }
+
+    await act(async () => {
+      openButton.click();
+    });
+    expect(onOpenInEditor).toHaveBeenCalledWith('src/comment.ts', expectedLine);
+  },
+);
+
 const renderLocalReviewComment = async ({
   body,
   onAskCodex,

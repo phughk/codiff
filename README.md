@@ -170,8 +170,14 @@ counts; when it is `false`, Codiff hides those changes from the working-tree rev
 }
 ```
 
+Opening a file, or clicking Open next to Ask while commenting on a line, launches VS Code with the
+repository root as its workspace (`code --reuse-window`), at that line. When the reviewed commit,
+range or pull request is not checked out, Codiff opens it from a worktree that already has it
+checked out, or creates a detached worktree for it in the system temp directory. That way the
+editor shows the files as they are in the diff.
+
 Set `settings.editorCommand` to customize file opening. Use `{file}` for the selected file,
-`{line}` for its line number when available, and `{repo}` for the repository root, for example
+`{line}` for its line number when available, and `{repo}` for the workspace root, for example
 `"subl \"{repo}\" \"{file}\""`.
 Set `settings.sidebarPosition` to `left` or `right` to choose which side of the desktop window shows
 the file sidebar.

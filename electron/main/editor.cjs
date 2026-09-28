@@ -68,16 +68,24 @@ const createEditorOpener = ({
       }
     }
 
+    // Passing the repository roots the VS Code window at it, so the file lands
+    // in a workspace instead of a loose editor window. `--reuse-window` points
+    // the current window at that root rather than opening another one.
+    const workspace = context.repoPath ? [context.repoPath] : [];
     for (const command of ['/opt/homebrew/bin/code', '/usr/local/bin/code', 'code']) {
       commands.push({
-        args: ['-g', context.lineNumber ? `${absolutePath}:${context.lineNumber}` : absolutePath],
+        args: [
+          ...(context.repoPath ? ['--reuse-window', context.repoPath] : []),
+          '-g',
+          context.lineNumber ? `${absolutePath}:${context.lineNumber}` : absolutePath,
+        ],
         command,
       });
     }
 
     if (platform === 'darwin') {
       commands.push({
-        args: ['-a', 'Visual Studio Code', absolutePath],
+        args: ['-a', 'Visual Studio Code', ...workspace, absolutePath],
         command: 'open',
       });
       commands.push({

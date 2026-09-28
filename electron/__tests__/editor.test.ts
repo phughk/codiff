@@ -109,7 +109,37 @@ test('opens definitions at their line in configured and built-in editors', () =>
     command: 'cursor',
   });
   expect(commands).toContainEqual({
-    args: ['-g', '/Users/test/project/src/file.ts:42'],
+    args: ['--reuse-window', '/Users/test/project', '-g', '/Users/test/project/src/file.ts:42'],
+    command: 'code',
+  });
+});
+
+test('opens VS Code rooted at the repository, or at the file alone without one', () => {
+  const opener = createOpener({ platform: 'darwin' });
+
+  expect(
+    opener.getEditorCommands('/Users/test/worktree/src/file.ts', {
+      repoPath: '/Users/test/worktree',
+    }),
+  ).toEqual(
+    expect.arrayContaining([
+      {
+        args: ['--reuse-window', '/Users/test/worktree', '-g', '/Users/test/worktree/src/file.ts'],
+        command: 'code',
+      },
+      {
+        args: [
+          '-a',
+          'Visual Studio Code',
+          '/Users/test/worktree',
+          '/Users/test/worktree/src/file.ts',
+        ],
+        command: 'open',
+      },
+    ]),
+  );
+  expect(opener.getEditorCommands('/Users/test/.codiff/codiff.jsonc')).toContainEqual({
+    args: ['-g', '/Users/test/.codiff/codiff.jsonc'],
     command: 'code',
   });
 });

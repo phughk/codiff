@@ -3,6 +3,7 @@ import { frontmatterPlugin, imagePlugin } from '@nkzw/mdx-editor/core';
 import { CaretDownIcon as CaretDown } from '@phosphor-icons/react/CaretDown';
 import { ChatCircleIcon as ChatCircle } from '@phosphor-icons/react/ChatCircle';
 import { CheckIcon as Check } from '@phosphor-icons/react/Check';
+import { CodeIcon as Code } from '@phosphor-icons/react/Code';
 import { ColumnsIcon as Columns } from '@phosphor-icons/react/Columns';
 import { ImageBrokenIcon as ImageBroken } from '@phosphor-icons/react/ImageBroken';
 import { SquareSplitVerticalIcon as SquareSplitVertical } from '@phosphor-icons/react/SquareSplitVertical';
@@ -1328,6 +1329,7 @@ function ReviewCommentEditor({
   onCommentDraftChange,
   onCommentFocus,
   onDeleteComment,
+  onOpenInEditor,
   onSaveCommentEdit,
   onSubmitComment,
   onUpdateComment,
@@ -1346,6 +1348,7 @@ function ReviewCommentEditor({
   onCommentDraftChange?: (comment: Pick<ReviewComment, 'body' | 'id'> | null) => void;
   onCommentFocus: (comment: ReviewComment) => void;
   onDeleteComment: (commentId: string) => void;
+  onOpenInEditor?: (path: string, lineNumber?: number) => void;
   onSaveCommentEdit: (commentId: string, body: string) => Promise<void> | void;
   onSubmitComment: (commentId: string) => void;
   onUpdateComment: (commentId: string, body: string) => void;
@@ -1738,6 +1741,26 @@ function ReviewCommentEditor({
                 Ask
               </button>
             ) : null}
+            {!comment.isReadOnly && onOpenInEditor ? (
+              <button
+                className="review-comment-action"
+                onClick={() =>
+                  // A removed line only exists in the old file, so open the
+                  // file without jumping to a line that means something else.
+                  onOpenInEditor(
+                    comment.filePath,
+                    comment.side === 'deletions' ? undefined : comment.lineNumber,
+                  )
+                }
+                title={`Open ${comment.filePath}${
+                  comment.side !== 'deletions' && comment.lineNumber ? `:${comment.lineNumber}` : ''
+                } in editor`}
+                type="button"
+              >
+                <Code aria-hidden className="review-comment-action-icon" size={14} weight="bold" />
+                Open
+              </button>
+            ) : null}
             {supportsReviewCommentActions && !comment.isReadOnly ? (
               <button
                 className="review-comment-action"
@@ -1929,6 +1952,7 @@ function ReviewCommentThreadGroup({
   onCommentDraftChange,
   onCommentFocus,
   onDeleteComment,
+  onOpenInEditor,
   onReplyToThread,
   onResolveThread = noopResolveThread,
   onSaveCommentEdit,
@@ -1949,6 +1973,7 @@ function ReviewCommentThreadGroup({
   onCommentDraftChange?: (comment: Pick<ReviewComment, 'body' | 'id'> | null) => void;
   onCommentFocus: (comment: ReviewComment) => void;
   onDeleteComment: (commentId: string) => void;
+  onOpenInEditor?: (path: string, lineNumber?: number) => void;
   onReplyToThread: (threadId: string, comment: ReviewComment) => void;
   onResolveThread?: (threadId: string, resolved: boolean) => Promise<void> | void;
   onSaveCommentEdit: (commentId: string, body: string) => Promise<void> | void;
@@ -2037,6 +2062,7 @@ function ReviewCommentThreadGroup({
             onCommentDraftChange={onCommentDraftChange}
             onCommentFocus={onCommentFocus}
             onDeleteComment={onDeleteComment}
+            onOpenInEditor={onOpenInEditor}
             onSaveCommentEdit={onSaveCommentEdit}
             onSubmitComment={onSubmitComment}
             onUpdateComment={onUpdateComment}
@@ -2101,6 +2127,7 @@ function ReviewAnnotation({
   onCommentFocus,
   onDeleteComment,
   onHeightChange,
+  onOpenInEditor,
   onReplyToThread,
   onResolveThread = noopResolveThread,
   onSaveCommentEdit,
@@ -2122,6 +2149,7 @@ function ReviewAnnotation({
   onCommentFocus: (comment: ReviewComment) => void;
   onDeleteComment: (commentId: string) => void;
   onHeightChange: () => void;
+  onOpenInEditor?: (path: string, lineNumber?: number) => void;
   onReplyToThread: (threadId: string, comment: ReviewComment) => void;
   onResolveThread?: (threadId: string, resolved: boolean) => Promise<void> | void;
   onSaveCommentEdit: (commentId: string, body: string) => Promise<void> | void;
@@ -2188,6 +2216,7 @@ function ReviewAnnotation({
           onCommentDraftChange={onCommentDraftChange}
           onCommentFocus={onCommentFocus}
           onDeleteComment={onDeleteComment}
+          onOpenInEditor={onOpenInEditor}
           onReplyToThread={onReplyToThread}
           onResolveThread={onResolveThread}
           onSaveCommentEdit={onSaveCommentEdit}
@@ -2570,6 +2599,7 @@ export function ReviewCodeView({
   onLoadSectionContents,
   onOpenDefinition,
   onOpenFile,
+  onOpenInEditor,
   onRefreshMarkdown,
   onResolveThread = noopResolveThread,
   onSaveCommentEdit,
@@ -2632,6 +2662,7 @@ export function ReviewCodeView({
   onLoadSectionContents?: (file: ChangedFile, section: DiffSection) => Promise<FileDiffLoadedFiles>;
   onOpenDefinition?: (candidate: DefinitionCandidate) => void;
   onOpenFile?: (file: ChangedFile) => void;
+  onOpenInEditor?: (path: string, lineNumber?: number) => void;
   onRefreshMarkdown?: (file: ChangedFile, section: DiffSection) => Promise<boolean>;
   onResolveThread?: (threadId: string, resolved: boolean) => Promise<void> | void;
   onSaveCommentEdit: (commentId: string, body: string) => Promise<void> | void;
@@ -4376,6 +4407,7 @@ export function ReviewCodeView({
           onCommentFocus={focusComment}
           onDeleteComment={deleteComment}
           onHeightChange={() => markCommentLayoutChanged(item.id)}
+          onOpenInEditor={onOpenInEditor}
           onReplyToThread={replyToThread}
           onResolveThread={onResolveThread}
           onSaveCommentEdit={onSaveCommentEdit}
@@ -4401,6 +4433,7 @@ export function ReviewCodeView({
       markImagePreviewLayoutReady,
       markCommentLayoutChanged,
       onAskCodex,
+      onOpenInEditor,
       onCommentDraftChange,
       onLoadImageContent,
       onResolveThread,
