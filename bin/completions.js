@@ -6,6 +6,19 @@ export const completionShells = ['bash', 'fish', 'zsh'];
 const refCommand =
   "git for-each-ref --format='%(refname:short)' refs/heads refs/remotes refs/tags 2>/dev/null";
 
+// Recent commits complete by abbreviated hash; shells that show descriptions
+// get the subject after the separator.
+const recentCommitCount = 50;
+const commitCommand = (format) =>
+  `git log -n ${recentCommitCount} --format='${format}' 2>/dev/null`;
+
+// Words that select something other than a ref as the first argument.
+const keywords = [
+  { description: 'Review a GitLab merge request.', name: 'mr' },
+  { description: 'Review a GitHub pull request.', name: 'pr' },
+  { description: 'Update Codiff to the latest release.', name: 'update' },
+];
+
 // What a flag's value should complete to is derived from the placeholder shown
 // in `codiff --help`, so a new flag is covered without touching this file:
 // `<a|b|c>` completes the listed values, `<ref>` completes git refs, `<file>`
@@ -88,20 +101,37 @@ _codiff_refs() {
   ${refCommand}
 }
 
+_codiff_commits() {
+  ${commitCommand('%h')}
+}
+
 # Ref names are attacker-controlled in a cloned repository and may contain
 # \`$(...)\`, backticks or other metacharacters. \`compgen -W\` expands the words it
 # is given, so refs are matched here as plain data and handed back quoted.
 _codiff_complete_refs() {
-  local candidate ref
+  local candidate prefix='' ref word="$1"
   COMPREPLY=()
+  # \`base..head\` and \`base...head\` complete the ref after the dots.
+  if [[ "$word" == *..* ]]; then
+    prefix="\${word%..*}.."
+    word="\${word##*..}"
+  fi
   while IFS= read -r ref; do
     printf -v candidate '%q' "$ref"
     # A word that needs quoting reaches the completion already escaped, so the
     # typed prefix is compared against both spellings of the ref.
-    if [[ "$ref" == "$1"* || "$candidate" == "$1"* ]]; then
-      COMPREPLY+=("$candidate")
+    if [[ "$ref" == "$word"* || "$candidate" == "$word"* ]]; then
+      COMPREPLY+=("$prefix$candidate")
     fi
   done < <(_codiff_refs)
+  # Hashes only once the word could be one, so they do not bury the refs.
+  if [[ -n "$word" && ! "$word" =~ [^0-9a-fA-F] ]]; then
+    while IFS= read -r ref; do
+      if [[ "$ref" == "$word"* ]]; then
+        COMPREPLY+=("$prefix$ref")
+      fi
+    done < <(_codiff_commits)
+  fi
 }
 
 # Whether the ref has already been given, either as an argument or through a
@@ -157,6 +187,9 @@ ${cases.map(renderCase).join('\n')}
   fi
 
   _codiff_complete_refs "$current"
+  if [[ "$current" != *..* ]]; then
+    COMPREPLY+=($(compgen -W ${quote(keywords.map(({ name }) => name).join(' '))} -- "$current"))
+  fi
 }
 
 complete -o bashdefault -o default -F _codiff codiff
@@ -180,7 +213,7 @@ function generateFishCompletions() {
     if (completion?.type === 'values') {
       parts.push(`-x -a ${quote(completion.values.join(' '))}`);
     } else if (completion?.type === 'ref') {
-      parts.push("-x -a '(__codiff_refs)'");
+      parts.push("-x -a '(__codiff_commitish)'");
     } else if (completion?.type === 'file') {
       parts.push('-r -F');
     } else if (completion) {
@@ -196,6 +229,25 @@ function generateFishCompletions() {
 
 function __codiff_refs
     command ${refCommand}
+end
+
+# Printed as \`hash<tab>subject\` so fish shows the subject as the description.
+function __codiff_commits
+    command ${commitCommand('%h%x09%s')}
+end
+
+function __codiff_commitish
+    __codiff_refs
+    __codiff_commits
+end
+
+# \`base..head\` and \`base...head\` complete the ref after the dots. Candidates
+# are printed as data, never evaluated.
+function __codiff_revisions
+    set -l prefix (string match -r -- '^.*\\.\\.' (commandline -ct))
+    for revision in (__codiff_commitish)
+        printf '%s%s\\n' "$prefix" "$revision"
+    end
 end
 
 # The ref is only completable while it is still the argument being typed: once it
@@ -222,7 +274,13 @@ function __codiff_expects_ref
     return 0
 end
 
-complete -c codiff -n __codiff_expects_ref -a '(__codiff_refs)' -d 'Git ref'
+complete -c codiff -n __codiff_expects_ref -a '(__codiff_revisions)' -d 'Git ref'
+${keywords
+  .map(
+    ({ description, name }) =>
+      `complete -c codiff -n __codiff_expects_ref -a ${name} -d ${quote(description)}`,
+  )
+  .join('\n')}
 ${lines.join('\n')}
 `;
 }
@@ -241,7 +299,7 @@ function generateZshCompletions() {
       completion?.type === 'values'
         ? `:${name}:(${completion.values.join(' ')})`
         : completion?.type === 'ref'
-          ? ':ref:__codiff_refs'
+          ? ':ref:__codiff_commitish'
           : completion?.type === 'file'
             ? ':file:_files'
             : completion
@@ -259,6 +317,23 @@ __codiff_refs() {
   _describe -t refs 'ref' refs
 }
 
+# \`_describe\` reads each entry as \`hash:subject\`; neither side is evaluated.
+__codiff_commits() {
+  local -a commits
+  commits=(\${(f)"$(${commitCommand('%h:%s')})"})
+  _describe -t commits 'recent commit' commits
+}
+
+__codiff_commitish() {
+  _alternative 'refs:ref:__codiff_refs' 'commits:commit:__codiff_commits'
+}
+
+__codiff_keywords() {
+  local -a keywords
+  keywords=(${keywords.map(({ description, name }) => `'${name}:${escape(description)}'`).join(' ')})
+  _describe -t keywords 'command' keywords
+}
+
 _codiff() {
   _arguments -s \\
 ${argumentSpecifications.join('\n')}
@@ -273,7 +348,13 @@ __codiff_target() {
     _files
     return
   fi
-  _alternative 'refs:ref:__codiff_refs' 'files:file:_files'
+  # \`base..head\` and \`base...head\` complete the ref after the dots.
+  if compset -P '*..'; then
+    __codiff_commitish
+    return
+  fi
+  _alternative 'keywords:command:__codiff_keywords' 'refs:ref:__codiff_refs' \\
+    'commits:commit:__codiff_commits' 'files:file:_files'
 }
 
 if [ "\${funcstack[1]}" = '_codiff' ]; then

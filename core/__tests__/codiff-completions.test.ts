@@ -124,8 +124,8 @@ test.for(completionShells)('completes every documented flag in %s', (shell) => {
 test('completes refs for flags documented as taking a ref', () => {
   const script = generateCompletionScript('fish');
 
-  expect(script).toContain("-l branch -x -a '(__codiff_refs)'");
-  expect(script).toContain("-l commit -x -a '(__codiff_refs)'");
+  expect(script).toContain("-l branch -x -a '(__codiff_commitish)'");
+  expect(script).toContain("-l commit -x -a '(__codiff_commitish)'");
 });
 
 test('completes paths for flags documented as taking a file', () => {
@@ -229,6 +229,36 @@ test('matches refs against a prefix the shell has already escaped in bash', asyn
   expect(candidates).toContain(quoteForBash(HOSTILE_REF));
 });
 
+test.for(['..', '...'])('completes the head of a %s range in bash', async (dots) => {
+  const { candidates, executed } = await completeWithBash(['codiff', `main${dots}`]);
+
+  expect(executed).toBe(false);
+  expect(candidates).toContain(`main${dots}main`);
+  expect(candidates).toContain(`main${dots}${quoteForBash(HOSTILE_REF)}`);
+});
+
+test('completes recent commit hashes once the word looks like one in bash', async () => {
+  let head = '';
+  const { candidates } = await completeWithBash((shortHead) => {
+    head = shortHead;
+    return ['codiff', shortHead.slice(0, 2)];
+  });
+
+  expect(candidates).toContain(head);
+  expect((await completeWithBash(['codiff', ''])).candidates).not.toContain(head);
+});
+
+test('completes the update, pr and mr keywords as the first argument in bash', async () => {
+  expect((await completeWithBash(['codiff', 'up'])).candidates).toEqual(['update']);
+  expect((await completeWithBash(['codiff', ''])).candidates).toEqual(
+    expect.arrayContaining(['mr', 'pr', 'update']),
+  );
+});
+
+test.for(completionShells)('completes recent commits in %s', (shell) => {
+  expect(generateCompletionScript(shell)).toContain('git log -n 50');
+});
+
 test('generates a syntactically valid bash script', () => {
   expect(() =>
     execFileSync('bash', bashArguments(['-n']), {
@@ -294,8 +324,11 @@ const quoteForBash = (text: string) =>
 
 // Complete `words` with the generated bash script inside a repository whose
 // branches include one named after a command.
-const completeWithBash = (words: ReadonlyArray<string>) =>
-  withCompletionRepository('bash', async (repository, scriptPath) => {
+const completeWithBash = (
+  input: ReadonlyArray<string> | ((head: string) => ReadonlyArray<string>),
+) =>
+  withCompletionRepository('bash', async (repository, scriptPath, head) => {
+    const words = typeof input === 'function' ? input(head) : input;
     const script = [
       'source "$1"',
       `COMP_WORDS=(${words.map((word) => `'${word}'`).join(' ')})`,
@@ -333,7 +366,11 @@ const completeWithFish = (commandLine: string) =>
 
 async function withCompletionRepository(
   shell: string,
-  complete: (repository: string, scriptPath: string) => Promise<ReadonlyArray<string>>,
+  complete: (
+    repository: string,
+    scriptPath: string,
+    head: string,
+  ) => Promise<ReadonlyArray<string>>,
 ) {
   await using directory = await createTemporaryDirectory('codiff-completions-');
   const repository = directory.path;
@@ -346,12 +383,13 @@ async function withCompletionRepository(
   await git(['init', '--initial-branch', 'main']);
   await git(['commit', '--allow-empty', '-m', 'Initial commit']);
   await git(['branch', HOSTILE_REF]);
+  const head = (await git(['rev-parse', '--short', 'HEAD'])).stdout.trim();
 
   const scriptPath = join(repository, `completions.${shell}`);
   await writeFile(scriptPath, generateCompletionScript(shell));
 
   return {
-    candidates: await complete(repository, scriptPath),
+    candidates: await complete(repository, scriptPath, head),
     executed: existsSync(join(repository, 'pwned')),
   };
 }

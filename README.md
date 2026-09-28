@@ -88,7 +88,8 @@ codiff --help
 ```
 
 Codiff prints its own shell completions for bash, fish and zsh. They complete every flag, the
-values those flags accept, and Git refs for the ref argument:
+values those flags accept, the `pr`, `mr` and `update` keywords, and Git branches, tags and recent
+commit hashes for the ref argument, including either side of a `base..head` or `base...head` range:
 
 ```bash
 # bash, in ~/.bashrc
