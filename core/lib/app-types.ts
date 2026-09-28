@@ -109,6 +109,7 @@ export type ReviewComment = {
   filePath: string;
   id: string;
   isOutdated?: boolean;
+  isPending?: boolean;
   isReadOnly?: boolean;
   isThreadResolved?: boolean;
   lineNumber?: number;

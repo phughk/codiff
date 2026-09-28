@@ -554,17 +554,77 @@ const readResolvedReviewCommentIds = async (repoRoot, pullRequest) => {
   }
 };
 
+/**
+ * The viewer's own pending review. GitHub only lists a pending review to its
+ * author, so the first one is always the viewer's.
+ *
+ * @param {string} repoRoot
+ * @param {PullRequestReference} pullRequest
+ * @returns {Promise<{id: number; node_id: string} | null>}
+ */
+const findPendingPullRequestReview = async (repoRoot, pullRequest) => {
+  const pages = JSON.parse(
+    await ghApi(repoRoot, [
+      '--paginate',
+      '--slurp',
+      `repos/${pullRequest.owner}/${pullRequest.repo}/pulls/${pullRequest.number}/reviews?per_page=100`,
+    ]),
+  );
+  return (
+    (Array.isArray(pages) ? pages.flat() : []).find((review) => review?.state === 'PENDING') ?? null
+  );
+};
+
+/** @param {GitHubReviewComment} comment */
+const normalizePendingGitHubReviewComment = (comment) => {
+  const normalized = normalizeGitHubReviewComment(comment);
+  if (!normalized) {
+    return null;
+  }
+  // Pending comments are anchored to the head they were written against and
+  // are never outdated from the viewer's point of view.
+  const { isOutdated: _isOutdated, ...rest } = normalized;
+  return { ...rest, isPending: true };
+};
+
+/** @param {string} repoRoot @param {PullRequestReference} pullRequest */
+const readPendingPullRequestReviewComments = async (repoRoot, pullRequest) => {
+  try {
+    const review = await findPendingPullRequestReview(repoRoot, pullRequest);
+    if (!review) {
+      return [];
+    }
+    const pages = JSON.parse(
+      await ghApi(repoRoot, [
+        '--paginate',
+        '--slurp',
+        `repos/${pullRequest.owner}/${pullRequest.repo}/pulls/${pullRequest.number}/reviews/${review.id}/comments?per_page=100`,
+      ]),
+    );
+    return pages.flat().map(normalizePendingGitHubReviewComment).filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
 /** @param {string} repoRoot @param {PullRequestReference} pullRequest */
 const readPullRequestComments = async (repoRoot, pullRequest) => {
-  const [pages, resolvedCommentIds] = await Promise.all([
+  const [pages, resolvedCommentIds, pendingComments] = await Promise.all([
     ghApi(repoRoot, [
       '--paginate',
       '--slurp',
       `repos/${pullRequest.owner}/${pullRequest.repo}/pulls/${pullRequest.number}/comments?per_page=100`,
     ]).then((output) => JSON.parse(output)),
     readResolvedReviewCommentIds(repoRoot, pullRequest),
+    readPendingPullRequestReviewComments(repoRoot, pullRequest),
   ]);
-  return selectUnresolvedReviewComments(pages.flat(), resolvedCommentIds);
+  const pendingIds = new Set(pendingComments.map((comment) => comment?.id));
+  return [
+    ...selectUnresolvedReviewComments(pages.flat(), resolvedCommentIds).filter(
+      (comment) => !pendingIds.has(comment?.id),
+    ),
+    ...pendingComments,
+  ];
 };
 
 /** @param {string} repoRoot @param {PullRequestReference} pullRequest @returns {Promise<Array<GitHubCommit>>} */
@@ -1006,26 +1066,135 @@ const normalizePullRequestComment = (comment) => {
 };
 
 const PENDING_REVIEW_COMMENT_ERROR =
-  'You already have a pending GitHub review on this pull request. Submit or discard it on GitHub, then retry. Your comment draft is still here.';
+  'You already have a pending GitHub review on this pull request. Use "Add to review" to add this comment to it, or submit or discard the review, then retry. Your comment draft is still here.';
 
 /** @param {unknown} error */
 const isGitHubValidationError = (error) =>
   error instanceof Error && /(?:validation failed|http 422)/i.test(error.message);
 
 /** @param {string} repoRoot @param {PullRequestReference} pullRequest */
-const hasPendingPullRequestReview = async (repoRoot, pullRequest) => {
-  const pages = JSON.parse(
-    await ghApi(repoRoot, [
-      '--paginate',
-      '--slurp',
-      `repos/${pullRequest.owner}/${pullRequest.repo}/pulls/${pullRequest.number}/reviews?per_page=100`,
-    ]),
+const hasPendingPullRequestReview = async (repoRoot, pullRequest) =>
+  (await findPendingPullRequestReview(repoRoot, pullRequest)) != null;
+
+const ADD_PENDING_REVIEW_THREAD_MUTATION = `mutation($input: AddPullRequestReviewThreadInput!) {
+  addPullRequestReviewThread(input: $input) {
+    thread {
+      comments(last: 1) {
+        nodes {
+          author {
+            avatarUrl
+            login
+            url
+          }
+          body
+          createdAt
+          databaseId
+          url
+        }
+      }
+    }
+  }
+}`;
+
+/**
+ * @param {string} repoRoot
+ * @param {PullRequestReference} pullRequest
+ * @param {string | undefined} headSha
+ * @returns {Promise<{id: number; node_id: string}>}
+ */
+const findOrCreatePendingPullRequestReview = async (repoRoot, pullRequest, headSha) => {
+  const existing = await findPendingPullRequestReview(repoRoot, pullRequest);
+  if (existing) {
+    return existing;
+  }
+  // A review created without an `event` stays pending until it is submitted.
+  return JSON.parse(
+    await ghApi(
+      repoRoot,
+      [
+        '-X',
+        'POST',
+        `repos/${pullRequest.owner}/${pullRequest.repo}/pulls/${pullRequest.number}/reviews`,
+        '--input',
+        '-',
+      ],
+      headSha ? { commit_id: headSha } : {},
+    ),
   );
-  return Array.isArray(pages) && pages.flat().some((review) => review?.state === 'PENDING');
+};
+
+/** @param {string} reviewNodeId @param {PullRequestReviewComment} comment */
+const createPendingReviewThreadInput = (reviewNodeId, comment) => {
+  const payload = normalizePullRequestComment(comment);
+  return {
+    body: payload.body,
+    line: payload.line,
+    path: payload.path,
+    pullRequestReviewId: reviewNodeId,
+    side: payload.side,
+    ...(payload.start_line != null
+      ? { startLine: payload.start_line, startSide: payload.start_side }
+      : {}),
+  };
+};
+
+/**
+ * @param {string} repoRoot
+ * @param {string} reviewNodeId
+ * @param {PullRequestReviewComment} comment
+ */
+const addPendingReviewThread = async (repoRoot, reviewNodeId, comment) => {
+  const response = JSON.parse(
+    await ghApi(repoRoot, ['graphql', '--input', '-'], {
+      query: ADD_PENDING_REVIEW_THREAD_MUTATION,
+      variables: { input: createPendingReviewThreadInput(reviewNodeId, comment) },
+    }),
+  );
+  if (Array.isArray(response?.errors) && response.errors.length > 0) {
+    throw new Error(
+      response.errors.map((/** @type {{message?: string}} */ error) => error.message).join('\n'),
+    );
+  }
+  return response?.data?.addPullRequestReviewThread?.thread?.comments?.nodes?.[0] ?? null;
+};
+
+/** @param {string} launchPath @param {SubmitPullRequestCommentRequest} request */
+const addPendingPullRequestComment = async (launchPath, request) => {
+  const repoRoot = (await git(launchPath, ['rev-parse', '--show-toplevel'])).trim();
+  const pullRequest = parseGitHubPullRequestUrl(request.source.url);
+  const metadata = await readPullRequestMetadata(repoRoot, pullRequest);
+  await selectPullRequestRemote(repoRoot, pullRequest, metadata.head?.sha);
+  const review = await findOrCreatePendingPullRequestReview(
+    repoRoot,
+    pullRequest,
+    metadata.head?.sha,
+  );
+  const node = await addPendingReviewThread(repoRoot, review.node_id, request.comment);
+  if (typeof node?.databaseId !== 'number') {
+    throw new Error('GitHub accepted the comment but did not return comment metadata.');
+  }
+  // The mutation only echoes the comment itself, so the line anchor is the one
+  // Codiff sent.
+  return {
+    ...request.comment,
+    author: {
+      avatarUrl: node.author?.avatarUrl,
+      login: node.author?.login || 'GitHub user',
+      url: node.author?.url,
+    },
+    body: node.body || request.comment.body,
+    id: `github:${node.databaseId}`,
+    isPending: true,
+    submittedAt: node.createdAt,
+    url: node.url,
+  };
 };
 
 /** @param {string} launchPath @param {SubmitPullRequestCommentRequest} request */
 const submitPullRequestComment = async (launchPath, request) => {
+  if (request.pending) {
+    return addPendingPullRequestComment(launchPath, request);
+  }
   const repoRoot = (await git(launchPath, ['rev-parse', '--show-toplevel'])).trim();
   const pullRequest = parseGitHubPullRequestUrl(request.source.url);
   const metadata = await readPullRequestMetadata(repoRoot, pullRequest);
@@ -1070,6 +1239,27 @@ const submitPullRequestReview = async (launchPath, request) => {
   const metadata = await readPullRequestMetadata(repoRoot, pullRequest);
   await selectPullRequestRemote(repoRoot, pullRequest, metadata.head?.sha);
 
+  // GitHub allows one pending review per viewer, and creating another one
+  // fails, so a review that is already pending is completed and submitted.
+  const pendingReview = await findPendingPullRequestReview(repoRoot, pullRequest);
+  if (pendingReview) {
+    for (const comment of request.comments) {
+      await addPendingReviewThread(repoRoot, pendingReview.node_id, comment);
+    }
+    await ghApi(
+      repoRoot,
+      [
+        '-X',
+        'POST',
+        `repos/${pullRequest.owner}/${pullRequest.repo}/pulls/${pullRequest.number}/reviews/${pendingReview.id}/events`,
+        '--input',
+        '-',
+      ],
+      createPendingPullRequestReviewEventPayload(request),
+    );
+    return;
+  }
+
   await ghApi(
     repoRoot,
     [
@@ -1081,6 +1271,17 @@ const submitPullRequestReview = async (launchPath, request) => {
     ],
     createPullRequestReviewPayload(request),
   );
+};
+
+/**
+ * The pending review already holds comments, so unlike a new review a comment
+ * review needs no body of its own.
+ *
+ * @param {SubmitPullRequestReviewRequest} request
+ */
+const createPendingPullRequestReviewEventPayload = (request) => {
+  const body = request.body?.trim() || '';
+  return { ...(body ? { body } : {}), event: request.event };
 };
 
 /** @param {SubmitPullRequestReviewRequest} request */
@@ -1106,6 +1307,8 @@ module.exports = {
   PENDING_REVIEW_COMMENT_ERROR,
   collectResolvedReviewCommentIds,
   createPatchFromPullRequestFile,
+  createPendingPullRequestReviewEventPayload,
+  createPendingReviewThreadInput,
   createPullRequestHistoryFetchRefspecs,
   createPullRequestSection,
   createPullRequestSource,
@@ -1115,6 +1318,7 @@ module.exports = {
   normalizeGitHubCommit,
   normalizeGitHubPullRequestCommit,
   normalizeGitHubReviewComment,
+  normalizePendingGitHubReviewComment,
   normalizePullRequestComment,
   parseGitHubPullRequestUrl,
   readPullRequestImageContent,

@@ -201,3 +201,62 @@ test('app review comments submit and clear pending review drafts', async () => {
   expect(getState().reviewComments).toEqual([]);
   expect(getState().pullRequestReviewSubmitting).toBeNull();
 });
+
+test('app review comments add drafts to the pending review and publish them with the review', async () => {
+  const submitPullRequestComment = vi.fn(async () => ({
+    author: { login: 'reviewer' },
+    body: comment.body,
+    filePath: comment.filePath,
+    id: 'github:99',
+    isPending: true,
+    lineNumber: comment.lineNumber,
+    side: comment.side,
+    submittedAt: '2026-09-28T10:00:00.000Z',
+    url: 'https://github.com/nkzw-tech/codiff/pull/42#discussion_r99',
+  }));
+  const submitPullRequestReview = vi.fn(async () => {});
+  window.codiff = {
+    submitPullRequestComment,
+    submitPullRequestReview,
+  } as unknown as Window['codiff'];
+  await using view = await renderAppReviewComments(pullRequestState);
+  const { getState } = view;
+
+  await act(async () => {
+    getState().setReviewComments([comment]);
+  });
+  await act(async () => {
+    getState().submitPendingPullRequestComment(comment.id);
+  });
+  expect(submitPullRequestComment).toHaveBeenCalledWith({
+    comment: {
+      body: comment.body,
+      filePath: comment.filePath,
+      lineNumber: comment.lineNumber,
+      side: comment.side,
+    },
+    pending: true,
+    source: pullRequestState.source,
+  });
+  await waitFor(() => {
+    expect(getState().reviewComments[0]).toMatchObject({
+      id: 'github:99',
+      isPending: true,
+      isReadOnly: true,
+    });
+  });
+  // The pending review alone is enough to submit a comment review.
+  expect(getState().hasPendingReviewComments).toBe(true);
+
+  await act(async () => {
+    await getState().submitPullRequestReview('COMMENT');
+  });
+  expect(submitPullRequestReview).toHaveBeenCalledWith({
+    comments: [],
+    event: 'COMMENT',
+    source: pullRequestState.source,
+  });
+  expect(getState().reviewComments).toHaveLength(1);
+  expect(getState().reviewComments[0]?.isPending).toBeUndefined();
+  expect(getState().hasPendingReviewComments).toBe(false);
+});

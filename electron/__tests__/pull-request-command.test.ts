@@ -178,6 +178,7 @@ printf '%s' '{}'
   const calls = (await readFile(callsPath, 'utf8')).trim().split('\n');
   expect(calls).toEqual([
     'api repos/nkzw-tech/codiff/pulls/12 | ',
+    'api --paginate --slurp repos/nkzw-tech/codiff/pulls/12/reviews?per_page=100 | ',
     'api -X POST repos/nkzw-tech/codiff/pulls/12/reviews --input - | ' +
       '{"body":"General feedback.","comments":[],"event":"COMMENT"}',
   ]);

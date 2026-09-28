@@ -277,6 +277,7 @@ export default function App() {
     reviewComments,
     reviewCommentsRef,
     setReviewComments,
+    submitPendingPullRequestComment,
     submitPullRequestComment,
     submitPullRequestReview,
     updateActiveReviewCommentDraft,
@@ -1673,6 +1674,9 @@ export default function App() {
       ? selectedOrSearchPath
       : (visibleFiles[0]?.path ?? null);
   const isPullRequest = state.source.type === 'pull-request';
+  const isGitHubPullRequest =
+    state.source.type === 'pull-request' &&
+    (state.source.provider === 'github' || state.source.host === 'github.com');
   const isSwitchingSource = pendingSource != null;
   const showAgentUnavailablePanel =
     sidebarMode === 'walkthrough' &&
@@ -1749,6 +1753,7 @@ export default function App() {
     onSaveCommentEdit: updateComment,
     onSelectPathFromScroll: updateSelectedPathFromScroll,
     onSubmitComment: submitPullRequestComment,
+    ...(isGitHubPullRequest ? { onSubmitPendingComment: submitPendingPullRequestComment } : {}),
     onToggleCollapsed: toggleCollapsed,
     onToggleViewed: toggleViewed,
     onUpdateComment: updateComment,
@@ -1761,10 +1766,7 @@ export default function App() {
         hasPendingComments={hasPendingReviewComments}
         onSubmitReview={submitPullRequestReview}
         reviewStatus={state.source.type === 'pull-request' ? state.source.reviewStatus : undefined}
-        showCommentReview={
-          state.source.type === 'pull-request' &&
-          (state.source.provider === 'github' || state.source.host === 'github.com')
-        }
+        showCommentReview={isGitHubPullRequest}
       />
     ) : undefined,
     supportsReviewCommentActions: isPullRequest,

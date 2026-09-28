@@ -1676,6 +1676,70 @@ test.for([
   },
 );
 
+test('adds a pull request comment to the pending review from the comment actions', async () => {
+  const file = createChangedFile('src/comment.ts');
+  const onSubmitComment = vi.fn();
+  const onSubmitPendingComment = vi.fn();
+  await using view = await renderReact(
+    <ReviewCodeViewHarness
+      comments={[
+        {
+          body: 'Keep this explicit.',
+          filePath: file.path,
+          id: 'comment-1',
+          lineNumber: 1,
+          sectionId: file.sections[0].id,
+          side: 'additions',
+        },
+      ]}
+      diffStyle="unified"
+      files={[file]}
+      onSubmitComment={onSubmitComment}
+      onSubmitPendingComment={onSubmitPendingComment}
+      supportsReviewCommentActions
+    />,
+  );
+  const buttons = [...view.container.querySelectorAll<HTMLButtonElement>('.review-comment button')];
+  const addToReviewButton = buttons.find((button) => button.textContent === 'Add to review');
+  if (!addToReviewButton) {
+    throw new Error('Expected Add to review button beside Comment.');
+  }
+  expect(buttons.some((button) => button.textContent === 'Comment')).toBe(true);
+
+  await act(async () => {
+    addToReviewButton.click();
+  });
+  expect(onSubmitPendingComment).toHaveBeenCalledWith('comment-1');
+  expect(onSubmitComment).not.toHaveBeenCalled();
+});
+
+test('marks comments in the pending review', async () => {
+  const file = createChangedFile('src/comment.ts');
+  await using view = await renderReact(
+    <ReviewCodeViewHarness
+      comments={[
+        {
+          author: { login: 'reviewer' },
+          body: 'Keep this explicit.',
+          filePath: file.path,
+          id: 'github:99',
+          isPending: true,
+          isReadOnly: true,
+          lineNumber: 1,
+          sectionId: file.sections[0].id,
+          side: 'additions',
+        },
+      ]}
+      diffStyle="unified"
+      files={[file]}
+      supportsReviewCommentActions
+    />,
+  );
+  await waitFor(() => {
+    expect(view.container.querySelector('.review-comment-pending')?.textContent).toBe('Pending');
+  });
+});
+
 const renderLocalReviewComment = async ({
   body,
   onAskCodex,

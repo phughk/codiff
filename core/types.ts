@@ -836,6 +836,8 @@ export type PullRequestExistingReviewComment = PullRequestReviewComment & {
   canResolveThread?: boolean;
   id: string;
   isOutdated?: boolean;
+  /** Part of the viewer's pending review, which only they can see until it is submitted. */
+  isPending?: boolean;
   isThreadResolved?: boolean;
   submittedAt?: string;
   url?: string;
@@ -863,6 +865,8 @@ export type PullRequestReviewEvent = 'APPROVE' | 'COMMENT' | 'REQUEST_CHANGES';
 
 export type SubmitPullRequestCommentRequest = {
   comment: PullRequestReviewComment;
+  /** Add the comment to the viewer's pending review instead of publishing it right away. */
+  pending?: boolean;
   source: Extract<ReviewSource, { type: 'pull-request' }>;
 };
 

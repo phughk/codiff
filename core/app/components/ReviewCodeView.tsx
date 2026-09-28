@@ -2,6 +2,7 @@ import type { MarkdownEditorHandle } from '@nkzw/mdx-editor';
 import { frontmatterPlugin, imagePlugin } from '@nkzw/mdx-editor/core';
 import { CaretDownIcon as CaretDown } from '@phosphor-icons/react/CaretDown';
 import { ChatCircleIcon as ChatCircle } from '@phosphor-icons/react/ChatCircle';
+import { ChatCircleDotsIcon as ChatCircleDots } from '@phosphor-icons/react/ChatCircleDots';
 import { CheckIcon as Check } from '@phosphor-icons/react/Check';
 import { CodeIcon as Code } from '@phosphor-icons/react/Code';
 import { ColumnsIcon as Columns } from '@phosphor-icons/react/Columns';
@@ -1332,6 +1333,7 @@ function ReviewCommentEditor({
   onOpenInEditor,
   onSaveCommentEdit,
   onSubmitComment,
+  onSubmitPendingComment,
   onUpdateComment,
   supportsReviewCommentActions,
 }: {
@@ -1351,6 +1353,7 @@ function ReviewCommentEditor({
   onOpenInEditor?: (path: string, lineNumber?: number) => void;
   onSaveCommentEdit: (commentId: string, body: string) => Promise<void> | void;
   onSubmitComment: (commentId: string) => void;
+  onSubmitPendingComment?: (commentId: string) => void;
   onUpdateComment: (commentId: string, body: string) => void;
   supportsReviewCommentActions: boolean;
 }) {
@@ -1493,6 +1496,13 @@ function ReviewCommentEditor({
       onSubmitComment(comment.id);
     }
   }, [comment.id, flushDraft, onSubmitComment]);
+
+  const handleSubmitPendingComment = useCallback(() => {
+    const flushed = flushDraft();
+    if (onSubmitPendingComment && canSubmitComment(flushed)) {
+      onSubmitPendingComment(comment.id);
+    }
+  }, [comment.id, flushDraft, onSubmitPendingComment]);
 
   const handleStartEdit = useCallback(() => {
     if (!canEditExistingComment || editSubmitting) {
@@ -1678,6 +1688,14 @@ function ReviewCommentEditor({
             }${comment.isReadOnly ? ' read-only' : ''}`}
           >
             <strong>{displayName}</strong>
+            {comment.isPending ? (
+              <span
+                className="review-comment-pending"
+                title="Only you can see this until you submit your review"
+              >
+                Pending
+              </span>
+            ) : null}
             {editingExistingComment ? (
               <span className="general-comment-edit-actions">
                 <button
@@ -1778,6 +1796,27 @@ function ReviewCommentEditor({
                   weight="bold"
                 />
                 {comment.remoteSubmit?.status === 'submitting' ? 'Sending' : 'Comment'}
+              </button>
+            ) : null}
+            {supportsReviewCommentActions && !comment.isReadOnly && onSubmitPendingComment ? (
+              <button
+                className="review-comment-action"
+                disabled={!commentCanSubmit}
+                onClick={handleSubmitPendingComment}
+                title={
+                  commentCanSubmit
+                    ? 'Add to your pending review, which is published when you submit it'
+                    : 'Write a note before adding it to your review'
+                }
+                type="button"
+              >
+                <ChatCircleDots
+                  aria-hidden
+                  className="review-comment-action-icon"
+                  size={14}
+                  weight="bold"
+                />
+                Add to review
               </button>
             ) : null}
             {!comment.isReadOnly ? (
@@ -1957,6 +1996,7 @@ function ReviewCommentThreadGroup({
   onResolveThread = noopResolveThread,
   onSaveCommentEdit,
   onSubmitComment,
+  onSubmitPendingComment,
   onUpdateComment,
   supportsReviewCommentActions,
 }: {
@@ -1978,6 +2018,7 @@ function ReviewCommentThreadGroup({
   onResolveThread?: (threadId: string, resolved: boolean) => Promise<void> | void;
   onSaveCommentEdit: (commentId: string, body: string) => Promise<void> | void;
   onSubmitComment: (commentId: string) => void;
+  onSubmitPendingComment?: (commentId: string) => void;
   onUpdateComment: (commentId: string, body: string) => void;
   supportsReviewCommentActions: boolean;
 }) {
@@ -2065,6 +2106,7 @@ function ReviewCommentThreadGroup({
             onOpenInEditor={onOpenInEditor}
             onSaveCommentEdit={onSaveCommentEdit}
             onSubmitComment={onSubmitComment}
+            onSubmitPendingComment={onSubmitPendingComment}
             onUpdateComment={onUpdateComment}
             supportsReviewCommentActions={supportsReviewCommentActions}
           />
@@ -2132,6 +2174,7 @@ function ReviewAnnotation({
   onResolveThread = noopResolveThread,
   onSaveCommentEdit,
   onSubmitComment,
+  onSubmitPendingComment,
   onUpdateComment,
   supportsReviewCommentActions,
 }: {
@@ -2154,6 +2197,7 @@ function ReviewAnnotation({
   onResolveThread?: (threadId: string, resolved: boolean) => Promise<void> | void;
   onSaveCommentEdit: (commentId: string, body: string) => Promise<void> | void;
   onSubmitComment: (commentId: string) => void;
+  onSubmitPendingComment?: (commentId: string) => void;
   onUpdateComment: (commentId: string, body: string) => void;
   supportsReviewCommentActions: boolean;
 }) {
@@ -2221,6 +2265,7 @@ function ReviewAnnotation({
           onResolveThread={onResolveThread}
           onSaveCommentEdit={onSaveCommentEdit}
           onSubmitComment={onSubmitComment}
+          onSubmitPendingComment={onSubmitPendingComment}
           onUpdateComment={onUpdateComment}
           supportsReviewCommentActions={supportsReviewCommentActions}
         />
@@ -2605,6 +2650,7 @@ export function ReviewCodeView({
   onSaveCommentEdit,
   onSelectPathFromScroll,
   onSubmitComment,
+  onSubmitPendingComment,
   onToggleCollapsed,
   onToggleViewed,
   onUpdateComment,
@@ -2668,6 +2714,7 @@ export function ReviewCodeView({
   onSaveCommentEdit: (commentId: string, body: string) => Promise<void> | void;
   onSelectPathFromScroll: (viewer: CodeViewInstance) => void;
   onSubmitComment: (commentId: string) => void;
+  onSubmitPendingComment?: (commentId: string) => void;
   onToggleCollapsed: (file: ChangedFile, isCollapsed: boolean, reviewKey: string) => void;
   onToggleViewed: (file: ChangedFile, isViewed: boolean, reviewIdentity: ReviewIdentity) => void;
   onUpdateComment: (commentId: string, body: string) => void;
@@ -4412,6 +4459,7 @@ export function ReviewCodeView({
           onResolveThread={onResolveThread}
           onSaveCommentEdit={onSaveCommentEdit}
           onSubmitComment={onSubmitComment}
+          onSubmitPendingComment={onSubmitPendingComment}
           onUpdateComment={onUpdateComment}
           supportsReviewCommentActions={supportsReviewCommentActions}
         />
@@ -4439,6 +4487,7 @@ export function ReviewCodeView({
       onResolveThread,
       onSaveCommentEdit,
       onSubmitComment,
+      onSubmitPendingComment,
       onUpdateComment,
       renderComments,
       replyToThread,

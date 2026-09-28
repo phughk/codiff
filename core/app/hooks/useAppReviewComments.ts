@@ -133,8 +133,8 @@ export function useAppReviewComments({
     [reviewCommentsRef, stateRef, updateCodexReply],
   );
 
-  const submitPullRequestComment = useCallback(
-    (commentId: string) => {
+  const submitComment = useCallback(
+    (commentId: string, pending: boolean) => {
       const currentState = stateRef.current;
       const comment = reviewCommentsRef.current.find((candidate) => candidate.id === commentId);
       if (
@@ -151,6 +151,7 @@ export function useAppReviewComments({
       void window.codiff
         .submitPullRequestComment({
           comment: toPullRequestReviewComment(comment),
+          ...(pending ? { pending: true } : {}),
           source: currentState.source,
         })
         .then((submittedComment) => {
@@ -163,6 +164,7 @@ export function useAppReviewComments({
                     body: submittedComment.body,
                     filePath: submittedComment.filePath,
                     id: submittedComment.id,
+                    ...(submittedComment.isPending ? { isPending: true } : {}),
                     isReadOnly: true,
                     ...(submittedComment.anchor === 'file' ? { anchor: 'file' as const } : {}),
                     ...(submittedComment.lineNumber != null
@@ -196,6 +198,16 @@ export function useAppReviewComments({
     ],
   );
 
+  const submitPullRequestComment = useCallback(
+    (commentId: string) => submitComment(commentId, false),
+    [submitComment],
+  );
+
+  const submitPendingPullRequestComment = useCallback(
+    (commentId: string) => submitComment(commentId, true),
+    [submitComment],
+  );
+
   const submitPullRequestReview = useCallback(
     (event: PullRequestReviewEvent, body?: string) => {
       const currentState = stateRef.current;
@@ -211,7 +223,15 @@ export function useAppReviewComments({
         reviewCommentsRef.current,
         activeReviewCommentDraftRef.current,
       );
-      if (event === 'COMMENT' && pendingComments.length === 0 && !body?.trim()) {
+      const hasRemotePendingComments = reviewCommentsRef.current.some(
+        (comment) => comment.isPending,
+      );
+      if (
+        event === 'COMMENT' &&
+        pendingComments.length === 0 &&
+        !hasRemotePendingComments &&
+        !body?.trim()
+      ) {
         return;
       }
       const pendingCommentIds = new Set(pendingComments.map((comment) => comment.id));
@@ -225,8 +245,19 @@ export function useAppReviewComments({
         })
         .then(() => {
           updateActiveReviewCommentDraft(null);
+          // Submitting the review publishes the comments that were pending on
+          // GitHub along with the drafts sent in this request.
           setReviewComments((current) =>
-            current.filter((comment) => !pendingCommentIds.has(comment.id)),
+            current.flatMap((comment) => {
+              if (pendingCommentIds.has(comment.id)) {
+                return [];
+              }
+              if (comment.isPending) {
+                const { isPending: _isPending, ...published } = comment;
+                return [published];
+              }
+              return [comment];
+            }),
           );
         })
         .catch((error: unknown) => {
@@ -248,6 +279,7 @@ export function useAppReviewComments({
   );
 
   const hasPendingReviewComments =
+    reviewComments.some((comment) => comment.isPending) ||
     getPendingPullRequestReviewComments(reviewComments, activeReviewCommentDraftState).length > 0;
 
   return {
@@ -257,6 +289,7 @@ export function useAppReviewComments({
     pullRequestReviewSubmitting,
     reviewComments,
     setReviewComments,
+    submitPendingPullRequestComment,
     submitPullRequestComment,
     submitPullRequestReview,
   };

@@ -3531,6 +3531,16 @@ diffs-container .review-comment-thread {
   white-space: nowrap;
 }
 
+.review-comment-header .review-comment-pending {
+  background: color-mix(in srgb, var(--sidebar-ref) 15%, transparent);
+  border-radius: 14px;
+  color: var(--sidebar-ref);
+  corner-shape: squircle;
+  flex: none;
+  font: 600 11px/1 var(--font-sans);
+  padding: 4px 7px;
+}
+
 .review-comment-header .general-comment-edit-actions {
   margin-left: auto;
   overflow: visible;

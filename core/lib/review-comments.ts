@@ -446,6 +446,7 @@ export const getReviewCommentsFromState = (state: RepositoryState): ReadonlyArra
             filePath: comment.filePath,
             id: comment.id,
             ...(comment.isOutdated ? { isOutdated: true } : {}),
+            ...(comment.isPending ? { isPending: true } : {}),
             isReadOnly: true,
             ...(comment.isThreadResolved ? { isThreadResolved: true } : {}),
             ...(comment.anchor === 'file' ? { anchor: 'file' as const } : {}),
