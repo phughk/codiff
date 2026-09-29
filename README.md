@@ -61,6 +61,12 @@ codiff mr 23
 Branch lookup uses `gh` and selects an open GitHub pull request. Include `owner:` for pull
 requests from forks.
 
+To re-review a GitHub pull request after new pushes, open **History** and click **Since** on the
+last commit you reviewed. Codiff shows only the pull request's own changes after that commit:
+changes that came in by merging or rebasing onto the base branch are left out, by comparing the head
+with that commit rebuilt on the current base. Files where that base merge conflicts are listed under
+the ⚠ next to the pull request label, since their diff may include base branch changes.
+
 Full GitHub and GitLab review URLs are also supported. GitLab hosts and nested project paths are
 derived from the URL or local Git remote and authenticated through `glab`; Codiff does not require
 instance-specific configuration.

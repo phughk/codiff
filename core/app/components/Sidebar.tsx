@@ -275,10 +275,27 @@ function HistorySidebar({
       row.author.toLowerCase().includes(normalizedQuery);
 
     if (pullRequestSource) {
+      // The full pull request, whether or not a "since" view is open.
+      const {
+        sinceConflictPaths: _sinceConflictPaths,
+        sinceRef,
+        ...fullPullRequestSource
+      } = pullRequestSource;
       const hasScopedRows = commitRows.some((row) => row.scope != null);
       const pullRequestRows = commitRows
         .filter((row) => (hasScopedRows ? row.scope === 'pull-request' : row.scope == null))
-        .filter(matchesQuery);
+        .filter(matchesQuery)
+        .map((row) =>
+          pullRequestSource.provider === 'gitlab'
+            ? row
+            : {
+                ...row,
+                sinceSource: {
+                  ...fullPullRequestSource,
+                  sinceRef: row.ref,
+                } satisfies ReviewSource,
+              },
+        );
       const baseRows = hasScopedRows
         ? commitRows.filter((row) => row.scope === 'base').filter(matchesQuery)
         : [];
@@ -288,11 +305,23 @@ function HistorySidebar({
               author: null,
               committedAt: null,
               gravatarUrl: undefined,
-              key: getSourceKey(pullRequestSource),
+              key: getSourceKey(fullPullRequestSource),
               kind: 'entry' as const,
               ref: pullRequestSource.number ? `PR #${pullRequestSource.number}` : 'PR',
-              source: pullRequestSource satisfies ReviewSource,
+              source: fullPullRequestSource satisfies ReviewSource,
               subject: pullRequestSource.title || 'Pull Request',
+            }
+          : null,
+        !normalizedQuery && sinceRef
+          ? {
+              author: null,
+              committedAt: null,
+              gravatarUrl: undefined,
+              key: getSourceKey(pullRequestSource),
+              kind: 'entry' as const,
+              ref: 'since',
+              source: pullRequestSource satisfies ReviewSource,
+              subject: `Changes after ${getShortRef(sinceRef)}, without base branch merges`,
             }
           : null,
         {
@@ -414,7 +443,9 @@ function HistorySidebar({
 
         const selected = row.key === currentSourceKey;
         const hasMetadata = Boolean(row.author && row.committedAt);
-        return (
+        const sinceSource: ReviewSource | undefined =
+          'sinceSource' in row ? (row.sinceSource as ReviewSource) : undefined;
+        const entry = (
           <button
             className={`history-entry${selected ? ' selected' : ''}${hasMetadata ? ' with-metadata' : ''}`}
             key={row.key}
@@ -442,6 +473,21 @@ function HistorySidebar({
               </span>
             ) : null}
           </button>
+        );
+        return sinceSource ? (
+          <div className="history-entry-with-action" key={row.key}>
+            {entry}
+            <button
+              className="history-entry-since"
+              onClick={() => onSelectSource(sinceSource)}
+              title="Show the pull request's changes since this commit, leaving out base branch merges"
+              type="button"
+            >
+              Since
+            </button>
+          </div>
+        ) : (
+          entry
         );
       })}
       {loading ? (

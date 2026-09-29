@@ -899,10 +899,222 @@ const createPullRequestSection = (pullRequest, file, patch, oldFile, newFile) =>
   };
 };
 
+/**
+ * The tree `sinceCommit` would have if it were based on `currentBase`, built
+ * with `git merge-tree` so nothing in the worktree changes. Diffing it against
+ * the head leaves only the pull request's own changes: whatever arrived by
+ * merging (or rebasing onto) the base branch is in both trees. Paths that
+ * conflict in that merge are returned separately.
+ *
+ * @param {string} repoRoot
+ * @param {string} sinceCommit
+ * @param {string} currentBase
+ * @returns {Promise<{conflictPaths: Array<string>; tree: string} | null>} `null` when merge-tree is unavailable.
+ */
+const readTreeRebasedOnBase = async (repoRoot, sinceCommit, currentBase) => {
+  const alreadyBased = await git(repoRoot, [
+    'merge-base',
+    '--is-ancestor',
+    currentBase,
+    sinceCommit,
+  ]).then(
+    () => true,
+    () => false,
+  );
+  if (alreadyBased) {
+    return { conflictPaths: [], tree: `${sinceCommit}^{tree}` };
+  }
+
+  /** @type {string} */
+  let output;
+  try {
+    output = await git(repoRoot, [
+      'merge-tree',
+      '--write-tree',
+      '--name-only',
+      '--no-messages',
+      sinceCommit,
+      currentBase,
+    ]);
+  } catch (error) {
+    // Exit status 1 means the merge has conflicts; the output still names the
+    // tree (with conflict markers) and the conflicted paths.
+    const failure = /** @type {{code?: number; stdout?: string}} */ (error);
+    if (failure.code !== 1 || typeof failure.stdout !== 'string' || !failure.stdout.trim()) {
+      return null;
+    }
+    output = failure.stdout;
+  }
+  const [tree = '', ...conflictPaths] = output.split('\n').filter(Boolean);
+  return tree ? { conflictPaths: [...new Set(conflictPaths)], tree } : null;
+};
+
+/** @param {string} status @returns {GitHubPullRequestFile['status']} */
+const gitStatusToPullRequestStatus = (status) =>
+  status.startsWith('A')
+    ? 'added'
+    : status.startsWith('D')
+      ? 'removed'
+      : status.startsWith('R')
+        ? 'renamed'
+        : 'modified';
+
+/**
+ * The pull request's own changes after `sinceRef`, compared locally. The head
+ * and base come from the refs Codiff fetches for the pull request.
+ *
+ * @param {string} repoRoot
+ * @param {PullRequestReference} pullRequest
+ * @param {GitHubPullRequestMetadata} metadata
+ * @param {LocalGitRemote | null} remote
+ * @param {string} sinceRef
+ * @returns {Promise<{conflictPaths: Array<string>; files: Array<ChangedFile>; sinceCommit: string}>}
+ */
+const readPullRequestFilesSince = async (repoRoot, pullRequest, metadata, remote, sinceRef) => {
+  const contentRefs = await resolvePullRequestContentRefs(repoRoot, pullRequest, metadata, remote);
+  if (!contentRefs) {
+    throw new Error(
+      `Codiff could not fetch PR #${pullRequest.number} locally, which it needs to show the changes since a commit.`,
+    );
+  }
+  const sinceCommit = (
+    await gitOrEmpty(repoRoot, ['rev-parse', '--verify', '--quiet', `${sinceRef}^{commit}`])
+  ).trim();
+  if (!sinceCommit) {
+    throw new Error(`Commit ${sinceRef} is not available in this repository.`);
+  }
+
+  const head = contentRefs.head;
+  const rebased = await readTreeRebasedOnBase(repoRoot, sinceCommit, contentRefs.base);
+  // Without merge-tree, fall back to a plain comparison that may include base changes.
+  const oldTree = rebased?.tree ?? sinceCommit;
+  const conflictPaths = rebased ? rebased.conflictPaths : [];
+  const conflictSet = new Set(conflictPaths);
+
+  const [nameStatus, diff] = await Promise.all([
+    git(repoRoot, ['diff', '--name-status', '-z', '--find-renames', oldTree, head]),
+    git(repoRoot, ['diff', '--patch', '--no-ext-diff', '--find-renames', oldTree, head]),
+  ]);
+  const diffByPath = splitPullRequestDiff(diff);
+  const fields = nameStatus.split('\0').filter(Boolean);
+  /** @type {Array<GitHubPullRequestFile>} */
+  const changed = [];
+  for (let index = 0; index < fields.length;) {
+    const status = fields[index] ?? '';
+    const renamed = status.startsWith('R') || status.startsWith('C');
+    const previous = renamed ? fields[index + 1] : undefined;
+    const filename = fields[index + (renamed ? 2 : 1)] ?? '';
+    index += renamed ? 3 : 2;
+    changed.push({
+      filename,
+      ...(status.startsWith('R') && previous ? { previous_filename: previous } : {}),
+      status: gitStatusToPullRequestStatus(status),
+    });
+  }
+
+  // A conflicted file's rebuilt old side holds conflict markers, so compare it
+  // with the commit itself instead and flag that base changes may show.
+  const conflictPatches = new Map(
+    await Promise.all(
+      [...conflictSet].map(async (path) => /** @type {const} */ ([
+        path,
+        await gitOrEmpty(repoRoot, [
+          'diff',
+          '--patch',
+          '--no-ext-diff',
+          sinceCommit,
+          head,
+          '--',
+          path,
+        ]),
+      ])),
+    ),
+  );
+  const oldPathFor = (/** @type {GitHubPullRequestFile} */ file) =>
+    file.previous_filename || file.filename;
+  const cleanFiles = changed.filter((file) => !conflictSet.has(file.filename));
+  const conflictFiles = changed.filter((file) => conflictSet.has(file.filename));
+  const [oldFiles, conflictOldFiles, newFiles] = await Promise.all([
+    readGitFiles(repoRoot, oldTree, cleanFiles.map(oldPathFor), { refScopedEmptyCacheKey: true }),
+    readGitFiles(repoRoot, sinceCommit, conflictFiles.map(oldPathFor), {
+      refScopedEmptyCacheKey: true,
+    }),
+    readGitFiles(
+      repoRoot,
+      head,
+      changed.map((file) => file.filename),
+      { refScopedEmptyCacheKey: true },
+    ),
+  ]);
+
+  const files = changed
+    .map((file) => {
+      const conflicted = conflictSet.has(file.filename);
+      const patch =
+        (conflicted ? conflictPatches.get(file.filename) : diffByPath.get(file.filename)) || '';
+      const binary = BINARY_DIFF_MARKER.test(patch);
+      const oldFile = binary
+        ? null
+        : (conflicted ? conflictOldFiles : oldFiles).get(oldPathFor(file));
+      const newFile = binary ? null : newFiles.get(file.filename);
+      const section = createPullRequestSection(pullRequest, file, patch, oldFile, newFile);
+      return {
+        fingerprint: getFingerprint(
+          [
+            metadata.head?.sha || '',
+            sinceCommit,
+            file.status,
+            file.previous_filename || '',
+            file.filename,
+            section.loadState || 'ready',
+            patch,
+          ].join('\n'),
+        ),
+        oldPath: file.previous_filename,
+        path: file.filename,
+        sections: [section],
+        status: normalizePullRequestFileStatus(file.status),
+      };
+    })
+    .filter((file) => file.sections[0]?.patch || file.status === 'renamed')
+    .sort((left, right) => left.path.localeCompare(right.path));
+
+  return { conflictPaths, files, sinceCommit };
+};
+
 /** @param {string} launchPath @param {Extract<ReviewSource, {type: 'pull-request'}>} source @returns {Promise<RepositoryState>} */
 const readPullRequestState = async (launchPath, source) => {
   const repoRoot = (await git(launchPath, ['rev-parse', '--show-toplevel'])).trim();
   const pullRequest = parseGitHubPullRequestUrl(source.url);
+
+  if (source.sinceRef) {
+    const [metadata, reviewComments] = await Promise.all([
+      readPullRequestMetadata(repoRoot, pullRequest),
+      readPullRequestComments(repoRoot, pullRequest),
+    ]);
+    const remote = await selectPullRequestRemote(repoRoot, pullRequest, metadata.head?.sha);
+    const since = await readPullRequestFilesSince(
+      repoRoot,
+      pullRequest,
+      metadata,
+      remote,
+      source.sinceRef,
+    );
+    const pathSet = new Set(since.files.map((file) => file.path));
+    return {
+      files: since.files,
+      generatedAt: Date.now(),
+      launchPath,
+      // Only comments on files in this narrower diff can be placed.
+      reviewComments: reviewComments.filter((comment) => pathSet.has(comment.filePath)),
+      root: repoRoot,
+      source: {
+        ...createPullRequestSource(pullRequest, metadata),
+        ...(since.conflictPaths.length > 0 ? { sinceConflictPaths: since.conflictPaths } : {}),
+        sinceRef: since.sinceCommit,
+      },
+    };
+  }
 
   const [metadata, apiFiles, diff, reviewComments] = await Promise.all([
     readPullRequestMetadata(repoRoot, pullRequest),
@@ -1323,6 +1535,7 @@ module.exports = {
   parseGitHubPullRequestUrl,
   readPullRequestImageContent,
   readPullRequestState,
+  readTreeRebasedOnBase,
   resolvePullRequestContentRefs,
   selectPullRequestRemote,
   selectUnresolvedReviewComments,

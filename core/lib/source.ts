@@ -96,7 +96,7 @@ export const getSourceKey = (source: ReviewSource) =>
           : source.type === 'range'
             ? `range:${rangeLabel(source)}`
             : source.type === 'pull-request'
-              ? `pull-request:${source.provider ?? ''}:${source.host ?? ''}:${source.projectPath ?? `${source.owner ?? ''}/${source.repo ?? ''}`}#${source.number ?? source.url}`
+              ? `pull-request:${source.provider ?? ''}:${source.host ?? ''}:${source.projectPath ?? `${source.owner ?? ''}/${source.repo ?? ''}`}#${source.number ?? source.url}${source.sinceRef ? `@since:${source.sinceRef}` : ''}`
               : 'working-tree';
 
 const getErrorMessage = (error: unknown) =>
@@ -128,11 +128,13 @@ export const getSourceLabel = (source: ReviewSource) =>
         : source.type === 'range'
           ? rangeLabel(source)
           : source.type === 'pull-request'
-            ? source.number
-              ? `${source.provider === 'gitlab' ? 'MR' : 'PR'} #${source.number}`
-              : source.provider === 'gitlab'
-                ? 'Merge request'
-                : 'Pull request'
+            ? `${
+                source.number
+                  ? `${source.provider === 'gitlab' ? 'MR' : 'PR'} #${source.number}`
+                  : source.provider === 'gitlab'
+                    ? 'Merge request'
+                    : 'Pull request'
+              }${source.sinceRef ? ` since ${getShortRef(source.sinceRef)}` : ''}`
             : 'Uncommitted';
 
 export const getHistorySource = (source: ReviewSource): ReviewSource | undefined =>

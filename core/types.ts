@@ -171,6 +171,13 @@ export type ReviewSource =
       repo?: string;
       reviewers?: ReadonlyArray<PullRequestReviewer>;
       reviewStatus?: PullRequestReviewStatus;
+      /** Files whose base-branch merge conflicted, so their diff since `sinceRef` includes base changes. */
+      sinceConflictPaths?: ReadonlyArray<string>;
+      /**
+       * Show only the pull request's own changes after this commit, leaving out
+       * changes that came in by merging the base branch (GitHub only).
+       */
+      sinceRef?: string;
       title?: string;
       type: 'pull-request';
       url: string;

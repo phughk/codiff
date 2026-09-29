@@ -1451,6 +1451,34 @@ html[data-codiff-platform='darwin'] .sidebar {
   width: 100%;
 }
 
+.history-entry-with-action {
+  position: relative;
+}
+
+.history-entry-since {
+  -webkit-app-region: no-drag;
+  background: var(--sidebar-bg, var(--app-bg));
+  border: 1px solid rgb(127 127 127 / 0.28);
+  border-radius: 6px;
+  color: var(--sidebar-text);
+  cursor: pointer;
+  font: 600 11px/1 var(--font-sans);
+  opacity: 0;
+  padding: 3px 6px;
+  position: absolute;
+  right: 5px;
+  top: 3px;
+}
+
+.history-entry-with-action:hover .history-entry-since,
+.history-entry-since:focus-visible {
+  opacity: 1;
+}
+
+.history-entry-since:hover {
+  border-color: var(--tree-selection-focus);
+}
+
 .history-entry:hover,
 .history-entry.selected {
   background: color-mix(in srgb, var(--tree-selection-bg) 46%, transparent);

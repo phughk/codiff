@@ -1760,6 +1760,14 @@ export default function App() {
   const sidebarSourceLabel =
     state.source.type !== 'working-tree' ? getSourceLabel(state.source) : null;
   const pullRequestUrl = state.source.type === 'pull-request' ? state.source.url : null;
+  const sinceConflictPaths =
+    state.source.type === 'pull-request' ? (state.source.sinceConflictPaths ?? []) : [];
+  const sinceConflictTitle =
+    sinceConflictPaths.length > 0
+      ? `Merging the base branch conflicted in ${sinceConflictPaths.length === 1 ? 'this file' : 'these files'}, so ${
+          sinceConflictPaths.length === 1 ? 'its' : 'their'
+        } changes since the commit may include base branch changes:\n${sinceConflictPaths.join('\n')}`
+      : null;
   const emptySourceDetail = getEmptySourceDetail(state.source, state.root);
 
   const diffLineHeight = getCodeFontLineHeight(
@@ -1934,8 +1942,12 @@ export default function App() {
                   href={pullRequestUrl}
                   rel="noreferrer"
                   target="_blank"
+                  title={sinceConflictTitle ?? undefined}
                 >
-                  <span className="review-top-bar-source-label">{sidebarSourceLabel}</span>
+                  <span className="review-top-bar-source-label">
+                    {sidebarSourceLabel}
+                    {sinceConflictTitle ? ' ⚠' : ''}
+                  </span>
                   <ArrowSquareOut aria-hidden size={14} weight="bold" />
                 </a>
               ) : (
