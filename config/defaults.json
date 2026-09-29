@@ -13,6 +13,7 @@
     "opencodeModel": "opencode-default",
     "piModel": "pi-default",
     "reviewCommentsPrefix": "# Address these Review Comments",
+    "reviewPrompt": "",
     "sidebarPosition": "left",
     "taskAgents": {
       "ask": { "agent": "", "model": "" },

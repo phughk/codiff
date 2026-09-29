@@ -83,6 +83,11 @@
           "default": "# Address these Review Comments",
           "description": "Markdown prefix prepended to copied review comments. Set to an empty string to omit the heading entirely."
         },
+        "reviewPrompt": {
+          "type": "string",
+          "default": "",
+          "description": "Extra instructions added to the prompt when the agent reviews the diff with Review, such as what to focus on or ignore. Edit it in the app with Edit Review Prompt."
+        },
         "sidebarPosition": {
           "type": "string",
           "enum": ["left", "right"],

@@ -15,6 +15,7 @@ type UseAppCommandsOptions = {
   changeSidebarMode: (mode: SidebarMode) => void;
   focusFileFilter: () => void;
   getReviewCommandTarget: () => ReviewCommandTarget | null;
+  onEditReviewPrompt?: () => void;
   onOpenDiffSearch: () => void;
   onOpenReviewSource: (kind: OpenReviewSourceKind) => void;
   onOpenSelectedFile: () => void;
@@ -33,6 +34,7 @@ export function useAppCommands({
   changeSidebarMode,
   focusFileFilter,
   getReviewCommandTarget,
+  onEditReviewPrompt,
   onOpenDiffSearch,
   onOpenReviewSource,
   onOpenSelectedFile,
@@ -240,6 +242,15 @@ export function useAppCommands({
             }),
           ]
         : []),
+      ...(onEditReviewPrompt
+        ? [
+            registry.register({
+              execute: onEditReviewPrompt,
+              id: 'edit-review-prompt',
+              title: 'Edit Review Prompt',
+            }),
+          ]
+        : []),
     ];
     setCommands(registry.commands);
 
@@ -252,6 +263,7 @@ export function useAppCommands({
     changeSidebarMode,
     focusFileFilter,
     getReviewCommandTarget,
+    onEditReviewPrompt,
     onOpenDiffSearch,
     onOpenReviewSource,
     onOpenSelectedFile,

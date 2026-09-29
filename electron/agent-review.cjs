@@ -178,10 +178,28 @@ const buildAgentReviewInput = (state) => {
   };
 };
 
-/** @param {ReturnType<typeof buildAgentReviewInput>} input @param {string} agentLabel */
+/** @param {unknown} customPrompt */
+const buildCustomPromptInput = (customPrompt) => {
+  const prompt = typeof customPrompt === 'string' ? customPrompt.trim() : '';
+  return prompt
+    ? `
+Custom review instructions from the reviewer:
+${prompt}
+
+Follow these instructions for what to focus on, what to skip, and tone. If they conflict with the output rules above (anchoring comments on path, side, line, and lineText, or the JSON schema), keep those rules.
+`
+    : '';
+};
+
+/**
+ * @param {ReturnType<typeof buildAgentReviewInput>} input
+ * @param {string} agentLabel
+ * @param {unknown} [customPrompt]
+ */
 const buildAgentReviewPrompt = (
   input,
   agentLabel,
+  customPrompt,
 ) => `You are ${agentLabel} inside Codiff, reviewing a code change.
 
 The reviewer asked you to review the diff below and leave inline review comments.
@@ -203,7 +221,7 @@ Write comments a strong senior reviewer would leave:
 - Do not ask the author to verify code that is not in the diff. Some hunks may be omitted for size (metadata.omittedHunks); do not guess about them.
 - Leave at most ${MAX_REVIEW_COMMENTS} comments, most important first.
 - summary: one or two sentences with your overall verdict.
-
+${buildCustomPromptInput(customPrompt)}
 Metadata:
 ${JSON.stringify(input.metadata, null, 2)}
 
@@ -308,9 +326,10 @@ const normalizeAgentReview = (parsed, hunksByPath) => {
  * @param {RepositoryState} state
  * @param {Agent} agent
  * @param {AgentOptions} agentOptions
+ * @param {unknown} [customPrompt] The reviewer's `settings.reviewPrompt`.
  * @returns {Promise<AgentReviewResult>}
  */
-const readAgentReview = async (state, agent, agentOptions) => {
+const readAgentReview = async (state, agent, agentOptions, customPrompt) => {
   const input = buildAgentReviewInput(state);
   if (input.hunkCount === 0) {
     return {
@@ -324,7 +343,7 @@ const readAgentReview = async (state, agent, agentOptions) => {
   try {
     const response = await agent.run(
       state.root,
-      buildAgentReviewPrompt(input, agent.label),
+      buildAgentReviewPrompt(input, agent.label, customPrompt),
       agentReviewSchema,
       'agent-review.json',
       `${agent.label} review timed out.`,

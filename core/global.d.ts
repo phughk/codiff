@@ -86,6 +86,7 @@ declare global {
       markPlanReady: () => Promise<void>;
       onConfigChanged: (callback: (config: CodiffConfig) => void) => () => void;
       onCopyPendingCommentsRequest: (callback: () => string | Promise<string>) => () => void;
+      onEditReviewPrompt: (callback: () => void) => () => void;
       onFindInDiffs: (callback: () => void) => () => void;
       onKeyboardLayoutChanged: (callback: (layout: NativeKeyboardLayout) => void) => () => void;
       onMarkdownDocumentChanged: (
@@ -115,6 +116,7 @@ declare global {
       ) => Promise<SaveMarkdownDocumentResult>;
       savePlanReview: (review: PlanReview) => Promise<PlanReview>;
       setDiffStyle: (value: CodiffPreferences['diffStyle']) => Promise<void>;
+      setReviewPrompt: (value: string) => Promise<void>;
       setShowOutdated: (value: boolean) => Promise<void>;
       setWordWrap: (value: boolean) => Promise<void>;
       sharePlan: (review: PlanReview) => Promise<SharePlanResult>;

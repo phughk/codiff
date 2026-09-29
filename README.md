@@ -266,6 +266,9 @@ is unavailable, it retries with OpenCode's configured default and persists that 
 managed `/codiff` command runs directly in OpenCode, so OpenCode reports access errors for its
 selected model; choose `opencode-default` when portability is more important than pinning.
 
+Set `settings.reviewPrompt`, or use **Edit Review Prompt…** in the app menu or command bar, to add
+instructions to the prompt the agent gets when you click **Review**, such as what to focus on or skip.
+
 Set `settings.walkthroughPrompt` to add custom instructions to generated walkthrough prompts. Use it
 to request a specific language, tone, or level of detail while Codiff keeps its walkthrough guide,
 hunk ids, review-order constraints, and JSON schema in place.

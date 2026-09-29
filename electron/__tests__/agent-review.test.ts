@@ -8,6 +8,7 @@ const { buildAgentReviewInput, readAgentReview } = require('../agent-review.cjs'
     state: unknown,
     agent: unknown,
     agentOptions: unknown,
+    customPrompt?: string,
   ) => Promise<{
     comments?: ReadonlyArray<Record<string, unknown>>;
     reason?: string;
@@ -134,4 +135,16 @@ test('reports agent failures as unavailable', async () => {
     reason: 'boom',
     status: 'unavailable',
   });
+});
+
+test('adds the reviewer prompt to the review instructions', async () => {
+  const agent = createAgent({ comments: [], summary: '', version: 1 });
+
+  await readAgentReview(state, agent, {});
+  expect(agent.run.mock.calls[0]?.[1]).not.toContain('Custom review instructions');
+
+  await readAgentReview(state, agent, {}, '  Focus on security.  ');
+  const prompt = agent.run.mock.calls[1]?.[1] as string;
+  expect(prompt).toContain('Custom review instructions from the reviewer:\nFocus on security.\n');
+  expect(prompt.indexOf('Custom review instructions')).toBeLessThan(prompt.indexOf('Diff:'));
 });

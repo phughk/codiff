@@ -223,6 +223,7 @@ const createCodiffMock = (overrides: Partial<Window['codiff']> = {}): Window['co
   markPlanReady: vi.fn(async () => {}),
   onConfigChanged: vi.fn(() => () => {}),
   onCopyPendingCommentsRequest: vi.fn(() => () => {}),
+  onEditReviewPrompt: vi.fn(() => () => {}),
   onFindInDiffs: vi.fn(() => () => {}),
   onKeyboardLayoutChanged: vi.fn(() => () => {}),
   onMarkdownDocumentChanged: vi.fn(() => () => {}),
@@ -256,6 +257,7 @@ const createCodiffMock = (overrides: Partial<Window['codiff']> = {}): Window['co
   })),
   savePlanReview: vi.fn(async (review) => review),
   setDiffStyle: vi.fn(async () => {}),
+  setReviewPrompt: vi.fn(async () => {}),
   setShowOutdated: vi.fn(async () => {}),
   setWordWrap: vi.fn(async () => {}),
   sharePlan: vi.fn(async () => ({

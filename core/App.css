@@ -4672,6 +4672,18 @@ diffs-container .review-comment-thread {
   width: 100%;
 }
 
+textarea.review-prompt-input {
+  font: 13px/1.45 var(--font-sans);
+  height: auto;
+  min-height: 140px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.review-prompt-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
 .open-review-source-input:focus {
   box-shadow: 0 0 0 2px rgb(61 135 245 / 0.32);
 }

@@ -342,6 +342,10 @@ const mergeConfig = (raw) => {
         typeof rawSettings.reviewCommentsPrefix === 'string'
           ? rawSettings.reviewCommentsPrefix
           : defaults.settings.reviewCommentsPrefix,
+      reviewPrompt:
+        typeof rawSettings.reviewPrompt === 'string'
+          ? rawSettings.reviewPrompt
+          : defaults.settings.reviewPrompt,
       sidebarPosition: normalizeSidebarPosition(rawSettings.sidebarPosition),
       taskAgents: normalizeTaskAgents(rawSettings.taskAgents),
       showOutdated:

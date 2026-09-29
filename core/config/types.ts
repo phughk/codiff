@@ -24,6 +24,7 @@ export type CodiffSettings = {
   opencodeModel: string;
   piModel: string;
   reviewCommentsPrefix: string;
+  reviewPrompt: string;
   showOutdated: boolean;
   showWhitespace: boolean;
   sidebarPosition: 'left' | 'right';

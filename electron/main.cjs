@@ -725,6 +725,14 @@ const buildApplicationMenu = () =>
                   label: 'Agent per Task',
                   submenu: buildTaskAgentSubmenu(),
                 },
+                {
+                  click: (_menuItem, browserWindow) => {
+                    if (browserWindow instanceof BrowserWindow) {
+                      browserWindow.webContents.send('codiff:editReviewPrompt');
+                    }
+                  },
+                  label: 'Edit Review Prompt…',
+                },
                 { type: 'separator' },
                 {
                   click: () => {
@@ -768,6 +776,14 @@ const buildApplicationMenu = () =>
                 {
                   label: 'Agent per Task',
                   submenu: buildTaskAgentSubmenu(),
+                },
+                {
+                  click: (_menuItem, browserWindow) => {
+                    if (browserWindow instanceof BrowserWindow) {
+                      browserWindow.webContents.send('codiff:editReviewPrompt');
+                    }
+                  },
+                  label: 'Edit Review Prompt…',
                 },
                 { type: 'separator' },
                 {
@@ -1871,7 +1887,7 @@ ipcMain.handle('codiff:reviewDiffWithAgent', async (event, request) => {
     request?.source || launchOptions?.source,
   );
   const { agent, agentOptions } = resolveWindowTaskAgent(event.sender.id, 'review');
-  return readAgentReview(state, agent, agentOptions);
+  return readAgentReview(state, agent, agentOptions, config.settings.reviewPrompt);
 });
 
 ipcMain.handle('codiff:createWalkthroughCommit', async (event, request) => {
@@ -1953,6 +1969,12 @@ ipcMain.handle('codiff:setDiffStyle', (_event, value) => {
 
 ipcMain.handle('codiff:setShowOutdated', (_event, value) => {
   updateConfig({ settings: { ...config.settings, showOutdated: Boolean(value) } });
+});
+
+ipcMain.handle('codiff:setReviewPrompt', (_event, value) => {
+  updateConfig({
+    settings: { ...config.settings, reviewPrompt: typeof value === 'string' ? value : '' },
+  });
 });
 
 ipcMain.handle('codiff:setWordWrap', (_event, value) => {

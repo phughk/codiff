@@ -25,6 +25,7 @@ import {
 import { PlanEditorView } from './app/components/PlanEditorView.tsx';
 import { ReviewCodeView, type ReviewDiffBlock } from './app/components/ReviewCodeView.tsx';
 import type { ReviewModeItem } from './app/components/ReviewModeControl.tsx';
+import { ReviewPromptDialog } from './app/components/ReviewPromptDialog.tsx';
 import { ReviewTopBar } from './app/components/ReviewTopBar.tsx';
 import { Sidebar } from './app/components/Sidebar.tsx';
 import { CommitView } from './app/components/walkthrough/CommitView.tsx';
@@ -1309,6 +1310,13 @@ export default function App() {
 
   useEffect(() => window.codiff.onFindInDiffs(openDiffSearch), [openDiffSearch]);
 
+  const [reviewPromptDialogOpen, setReviewPromptDialogOpen] = useState(false);
+  const openReviewPromptDialog = useCallback(() => setReviewPromptDialogOpen(true), []);
+  useEffect(
+    () => window.codiff.onEditReviewPrompt(openReviewPromptDialog),
+    [openReviewPromptDialog],
+  );
+
   const loadMoreHistory = useCallback(() => {
     if (historyLoading || !historyHasMore) {
       return;
@@ -1593,6 +1601,7 @@ export default function App() {
     changeSidebarMode,
     focusFileFilter,
     getReviewCommandTarget,
+    onEditReviewPrompt: openReviewPromptDialog,
     onOpenDiffSearch: openDiffSearch,
     onOpenReviewSource: showOpenReviewSourceDialog,
     onOpenSelectedFile: openSelectedFile,
@@ -1988,6 +1997,14 @@ export default function App() {
         onClose={closeCommandBar}
         visible={commandBarVisible}
       />
+      {reviewPromptDialogOpen ? (
+        <ReviewPromptDialog
+          agentLabel={getAgentLabel(reviewAgentBackend)}
+          initialPrompt={codiffConfig.settings.reviewPrompt}
+          onClose={() => setReviewPromptDialogOpen(false)}
+          onSave={(prompt) => window.codiff.setReviewPrompt(prompt)}
+        />
+      ) : null}
       {openReviewSourceKind ? (
         <OpenReviewSourceDialog
           kind={openReviewSourceKind}
