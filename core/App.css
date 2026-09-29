@@ -4123,6 +4123,46 @@ diffs-container .review-comment-thread {
   color: var(--danger);
 }
 
+.agent-review-group {
+  align-items: center;
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+}
+
+.agent-review-nav {
+  -webkit-app-region: no-drag;
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font: 700 11px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-review-nav button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+  width: 20px;
+}
+
+.agent-review-nav button:hover {
+  background: rgb(127 127 127 / 0.14);
+  color: var(--sidebar-text);
+}
+
+.agent-review-nav-count {
+  min-width: 22px;
+  text-align: center;
+}
+
 .agent-review-icon {
   height: 14px;
   width: 14px;

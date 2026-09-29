@@ -597,6 +597,56 @@ export default function App() {
     }, 1200);
   }, []);
 
+  // The agent's review comments in diff order, for the Review button's ▲/▼.
+  const agentReviewComments = useMemo(() => {
+    const fileIndex = new Map(orderedFiles.map((file, index) => [file.path, index]));
+    return reviewComments
+      .filter((comment) => comment.agentReview && !comment.isReadOnly)
+      .toSorted(
+        (a, b) =>
+          (fileIndex.get(a.filePath) ?? Infinity) - (fileIndex.get(b.filePath) ?? Infinity) ||
+          (a.lineNumber ?? 0) - (b.lineNumber ?? 0),
+      );
+  }, [orderedFiles, reviewComments]);
+  const [agentReviewCommentId, setAgentReviewCommentId] = useState<string | null>(null);
+  const agentReviewCommentIndex = agentReviewComments.findIndex(
+    (comment) => comment.id === agentReviewCommentId,
+  );
+  const moveAgentReviewComment = useCallback(
+    (direction: 1 | -1) => {
+      const count = agentReviewComments.length;
+      if (count === 0) {
+        return;
+      }
+      const next =
+        agentReviewComments[
+          agentReviewCommentIndex === -1
+            ? direction === 1
+              ? 0
+              : count - 1
+            : (agentReviewCommentIndex + direction + count) % count
+        ]!;
+      setAgentReviewCommentId(next.id);
+      // Comments are placed in the file view, so leave the walkthrough to reach them.
+      if (sidebarModeRef.current === 'walkthrough' && narrativeWalkthroughRef.current) {
+        changeSidebarMode('tree');
+      }
+      setScrollTarget((current) => ({
+        behavior: 'smooth',
+        commentId: next.id,
+        path: next.filePath,
+        request: (current?.request ?? 0) + 1,
+      }));
+    },
+    [
+      agentReviewCommentIndex,
+      agentReviewComments,
+      changeSidebarMode,
+      narrativeWalkthroughRef,
+      sidebarModeRef,
+    ],
+  );
+
   const saveCurrentSourceSession = useCallback(() => {
     const currentState = stateRef.current;
     if (!currentState) {
@@ -1846,7 +1896,10 @@ export default function App() {
             <AgentReviewButton
               agentId={reviewAgentBackend}
               agentLabel={getAgentLabel(reviewAgentBackend)}
+              commentCount={agentReviewComments.length}
+              commentIndex={agentReviewCommentIndex}
               disabled={isSwitchingSource || state.files.length === 0}
+              onMoveComment={moveAgentReviewComment}
               onReview={reviewWithAgent}
               state={getAgentReviewState(getSourceKey(state.source))}
             />

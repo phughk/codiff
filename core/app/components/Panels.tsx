@@ -414,18 +414,26 @@ const getAgentReviewButtonTitle = (agentLabel: string, state: AgentReviewState) 
 export function AgentReviewButton({
   agentId,
   agentLabel,
+  commentCount = 0,
+  commentIndex = -1,
   disabled = false,
+  onMoveComment,
   onReview,
   state,
 }: {
   agentId: 'codex' | 'claude' | 'opencode' | 'pi';
   agentLabel: string;
+  /** How many of the agent's review comments are on the diff. */
+  commentCount?: number;
+  /** The comment last navigated to, or -1. */
+  commentIndex?: number;
   disabled?: boolean;
+  onMoveComment?: (direction: 1 | -1) => void;
   onReview: () => void;
   state: AgentReviewState;
 }) {
   const loading = state.status === 'loading';
-  return (
+  const button = (
     <button
       aria-busy={loading}
       className={`agent-review-button${state.status === 'error' ? ' error' : ''}`}
@@ -449,6 +457,36 @@ export function AgentReviewButton({
       )}
       <span>{loading ? 'Reviewing…' : 'Review'}</span>
     </button>
+  );
+  if (!onMoveComment || commentCount === 0) {
+    return button;
+  }
+
+  return (
+    <span className="agent-review-group">
+      {button}
+      <span className="agent-review-nav">
+        <button
+          aria-label={`Previous ${agentLabel} review comment`}
+          onClick={() => onMoveComment(-1)}
+          title="Previous review comment"
+          type="button"
+        >
+          <CaretUp aria-hidden size={13} weight="bold" />
+        </button>
+        <span className="agent-review-nav-count">
+          {commentIndex === -1 ? commentCount : `${commentIndex + 1}/${commentCount}`}
+        </span>
+        <button
+          aria-label={`Next ${agentLabel} review comment`}
+          onClick={() => onMoveComment(1)}
+          title="Next review comment"
+          type="button"
+        >
+          <CaretDown aria-hidden size={13} weight="bold" />
+        </button>
+      </span>
+    </span>
   );
 }
 
