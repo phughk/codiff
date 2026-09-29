@@ -20,6 +20,7 @@ type WalkthroughReviewProps = Omit<
   | 'onSelectPathFromScroll'
   | 'scrollTarget'
   | 'selectedPath'
+  | 'showScrollProgress'
   | 'showSourceDescription'
   | 'walkthroughNotes'
 >;
@@ -59,6 +60,7 @@ export function WalkthroughDiffSurface({
         onSelectPathFromScroll={ignorePathScroll}
         scrollTarget={scrollTarget}
         selectedPath={null}
+        showScrollProgress
         showSourceDescription
         sourceDescriptionActions={sourceDescriptionActions ?? reviewProps.sourceDescriptionActions}
         sourceDescriptionFooter={sourceDescriptionFooter ?? reviewProps.sourceDescriptionFooter}
