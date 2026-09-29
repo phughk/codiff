@@ -3,9 +3,7 @@ import { expect, test, vi } from 'vite-plus/test';
 
 const require = createRequire(import.meta.url);
 const { buildAgentReviewInput, readAgentReview } = require('../agent-review.cjs') as {
-  buildAgentReviewInput: (state: unknown) => {
-    input: { files: ReadonlyArray<{ hunks: ReadonlyArray<{ id: string; lines: string }> }> };
-  };
+  buildAgentReviewInput: (state: unknown) => { diff: string };
   readAgentReview: (
     state: unknown,
     agent: unknown,
@@ -52,28 +50,41 @@ const createAgent = (response: unknown) => ({
   run: vi.fn(async () => JSON.stringify(response)),
 });
 
-test('numbers hunk lines by side for the agent', () => {
-  const { input } = buildAgentReviewInput(state);
-
-  expect(input.files[0]?.hunks[0]).toEqual({
-    id: 'h1',
-    lines: [
+test('renders the diff as numbered lines under each file heading', () => {
+  expect(buildAgentReviewInput(state).diff).toBe(
+    [
+      '=== src/sum.ts (modified) ===',
+      '',
+      '@@ -10,3 +10,3 @@ export const sum',
       ' 10 | const a = 1;',
       '-11 | const b = 2;',
       '+11 | const b = 3;',
       ' 12 | return a + b;',
     ].join('\n'),
-  });
+  );
 });
 
-test('anchors agent comments to diff lines and drops unknown hunks', async () => {
+test('anchors comments by quoted line text and drops ones it cannot place', async () => {
+  const comment = {
+    body: 'Why 3?',
+    line: 11,
+    lineText: 'const b = 3;',
+    path: 'src/sum.ts',
+    severity: 'question',
+    side: 'additions',
+  };
   const agent = createAgent({
     comments: [
-      { body: 'Why 3? (h1)', hunkId: 'h1', line: 11, severity: 'question', side: 'additions' },
-      { body: 'Old value', hunkId: 'h1', line: 11, severity: 'nit', side: 'deletions' },
-      { body: 'Off the hunk', hunkId: 'h1', line: 99, severity: 'issue', side: 'additions' },
-      { body: 'Unknown hunk', hunkId: 'h9', line: 1, severity: 'issue', side: 'additions' },
-      { body: '   ', hunkId: 'h1', line: 11, severity: 'issue', side: 'additions' },
+      comment,
+      // Wrong number, right text: the text wins.
+      { ...comment, body: 'Wrong number', line: 40, lineText: 'const   b = 2;', side: 'additions' },
+      // Right number, paraphrased text: the number is kept.
+      { ...comment, body: 'Paraphrased', lineText: 'b = three' },
+      // Neither matches: dropped instead of guessed.
+      { ...comment, body: 'Unplaceable', line: 99, lineText: 'nothing like this' },
+      { ...comment, body: 'Unknown file', path: 'src/other.ts' },
+      { ...comment, body: 'Prefixed path', path: 'b/src/sum.ts', severity: 'nit' },
+      { ...comment, body: '   ' },
     ],
     summary: 'One question.',
     version: 1,
@@ -81,32 +92,20 @@ test('anchors agent comments to diff lines and drops unknown hunks', async () =>
 
   const result = await readAgentReview(state, agent, {});
 
+  const placed = (body: string, lineNumber: number, side: string, severity = 'question') => ({
+    body,
+    filePath: 'src/sum.ts',
+    lineNumber,
+    sectionId: 'src/sum.ts:unstaged',
+    severity,
+    side,
+  });
   expect(result).toEqual({
     comments: [
-      {
-        body: 'Why 3? (`src/sum.ts`)',
-        filePath: 'src/sum.ts',
-        lineNumber: 11,
-        sectionId: 'src/sum.ts:unstaged',
-        severity: 'question',
-        side: 'additions',
-      },
-      {
-        body: 'Old value',
-        filePath: 'src/sum.ts',
-        lineNumber: 11,
-        sectionId: 'src/sum.ts:unstaged',
-        severity: 'nit',
-        side: 'deletions',
-      },
-      {
-        body: 'Off the hunk',
-        filePath: 'src/sum.ts',
-        lineNumber: 11,
-        sectionId: 'src/sum.ts:unstaged',
-        severity: 'issue',
-        side: 'deletions',
-      },
+      placed('Why 3?', 11, 'additions'),
+      placed('Wrong number', 11, 'deletions'),
+      placed('Paraphrased', 11, 'additions'),
+      placed('Prefixed path', 11, 'additions', 'nit'),
     ],
     status: 'ready',
     summary: 'One question.',
