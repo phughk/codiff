@@ -175,6 +175,25 @@ export const useNarrativeNavigation = (
     [walkthrough, walkthroughView, markVisited],
   );
 
+  /**
+   * Goes to a stop and marks it and every later stop unreviewed, so review
+   * progress restarts from there.
+   */
+  const rewindToStop = useCallback(
+    (target: number) => {
+      if (!walkthroughView) {
+        return;
+      }
+      const laterStopIds = new Set(
+        walkthroughView.sequence.slice(Math.max(0, target)).map((stop) => stop.id),
+      );
+      setVisited((current) => new Set([...current].filter((id) => !laterStopIds.has(id))));
+      setSupportVisited(false);
+      goStop(target);
+    },
+    [goStop, walkthroughView],
+  );
+
   const goNext = useCallback(() => goStop(index + 1), [goStop, index]);
   const goPrev = useCallback(() => goStop(index - 1), [goStop, index]);
 
@@ -288,6 +307,7 @@ export const useNarrativeNavigation = (
     mode,
     openSupport,
     releaseStopScrollLock,
+    rewindToStop,
     scrollTarget,
     setCommitBody,
     setCommitSubject,

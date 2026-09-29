@@ -2,6 +2,7 @@ import { CheckIcon as Check } from '@phosphor-icons/react/Check';
 import { GitBranchIcon as GitBranch } from '@phosphor-icons/react/GitBranch';
 import { PathIcon as Path } from '@phosphor-icons/react/Path';
 import { ShareNetworkIcon as ShareNetwork } from '@phosphor-icons/react/ShareNetwork';
+import { useEffect, useRef, useState } from 'react';
 import { renderInlineMarkdown } from '../../../lib/markdown.tsx';
 import {
   buildCommitModel,
@@ -44,13 +45,18 @@ function TocFileRows({
   );
 }
 
+// Holding a stop this long goes to it and marks it and later stops unreviewed.
+const REWIND_HOLD_MS = 500;
+
 function TocStop({
   current,
+  onRewind,
   onSelect,
   stop,
   visited,
 }: {
   current: boolean;
+  onRewind: (index: number) => void;
   onSelect: (index: number) => void;
   stop: WalkthroughStopView;
   visited: boolean;
@@ -58,11 +64,68 @@ function TocStop({
   const isDone = visited && !current;
   const files = formatWalkthroughFileLineRows(stop.hunks);
   const title = stop.title ?? walkthroughItemTitleFallback(stop);
+  const [holding, setHolding] = useState(false);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdStartRef = useRef(0);
+  // A completed hold must not also count as a click when the pointer lifts.
+  const rewoundRef = useRef(false);
+
+  const cancelHold = () => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    setHolding(false);
+  };
+
+  const rewind = () => {
+    cancelHold();
+    rewoundRef.current = true;
+    onRewind(stop.index);
+  };
+
+  useEffect(
+    () => () => {
+      if (holdTimerRef.current) {
+        clearTimeout(holdTimerRef.current);
+      }
+    },
+    [],
+  );
+
   return (
     <button
-      className={`wt-toc-stop${current ? ' current' : ''}${isDone ? ' visited' : ''}`}
-      onClick={() => onSelect(stop.index)}
-      title={title}
+      className={`wt-toc-stop${current ? ' current' : ''}${isDone ? ' visited' : ''}${
+        holding ? ' holding' : ''
+      }`}
+      onClick={() => {
+        if (rewoundRef.current) {
+          rewoundRef.current = false;
+          return;
+        }
+        onSelect(stop.index);
+      }}
+      onPointerCancel={cancelHold}
+      onPointerDown={(event) => {
+        if (event.button !== 0) {
+          return;
+        }
+        rewoundRef.current = false;
+        holdStartRef.current = performance.now();
+        setHolding(true);
+        holdTimerRef.current = setTimeout(rewind, REWIND_HOLD_MS);
+      }}
+      onPointerLeave={cancelHold}
+      onPointerUp={() => {
+        // Timers can run late (a throttled background window), so a long
+        // enough press rewinds on release even if the timer has not fired.
+        if (holdTimerRef.current && performance.now() - holdStartRef.current >= REWIND_HOLD_MS) {
+          rewind();
+        } else {
+          cancelHold();
+        }
+      }}
+      title={`${title}\nPress and hold to mark this and later stops unreviewed.`}
       type="button"
     >
       <span className="wt-toc-rail">
@@ -201,6 +264,7 @@ export function NarrativeSidebar({
                 <TocStop
                   current={navigation.mode === 'stop' && stop.id === currentStopId}
                   key={stop.id}
+                  onRewind={navigation.rewindToStop}
                   onSelect={navigation.goStop}
                   stop={stop}
                   visited={navigation.visited.has(stop.id)}

@@ -197,3 +197,32 @@ test('stop and support scroll requests share one monotonic nonce sequence', asyn
   });
   expect(getNavigation().scrollTarget).toEqual({ index: 0, kind: 'stop', nonce: 3 });
 });
+
+test('rewinding to a stop marks it and later stops unreviewed', async () => {
+  const navigationRef: { current: NarrativeNavigation | null } = { current: null };
+  const getNavigation = () => navigationRef.current!;
+  await using _view = await renderReact(
+    <NavigationHarness onNavigation={(next) => (navigationRef.current = next)} />,
+  );
+
+  await act(async () => {
+    getNavigation().goStop(1);
+  });
+  await act(async () => {
+    getNavigation().goStop(2);
+  });
+  await act(async () => {
+    getNavigation().openSupport();
+  });
+  expect([...getNavigation().visited].toSorted()).toEqual(['first', 'second', 'third']);
+  expect(getNavigation().supportVisited).toBe(true);
+
+  await act(async () => {
+    getNavigation().rewindToStop(1);
+  });
+  expect(getNavigation().index).toBe(1);
+  expect(getNavigation().mode).toBe('stop');
+  // The stop rewound to is current again; later stops and support are unreviewed.
+  expect([...getNavigation().visited].toSorted()).toEqual(['first', 'second']);
+  expect(getNavigation().supportVisited).toBe(false);
+});

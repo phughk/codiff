@@ -78,6 +78,18 @@
   text-align: left;
   width: 100%;
 }
+/* Pressing and holding a stop fills it until it rewinds review progress there. */
+.wt-toc-stop.holding .wt-toc-main {
+  animation: wt-toc-rewind-hold 500ms linear forwards;
+  background: linear-gradient(to right, rgb(127 127 127 / 0.18) 50%, transparent 50%) 100% 0 / 200%
+    100% no-repeat;
+  border-radius: 6px;
+}
+@keyframes wt-toc-rewind-hold {
+  to {
+    background-position: 0 0;
+  }
+}
 .wt-toc-stop-actions {
   cursor: default;
 }
