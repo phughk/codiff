@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vite-plus/test';
-import { getSelectedPathFromScroll } from '../lib/review-scroll.ts';
+import { getScrollLineProgress, getSelectedPathFromScroll } from '../lib/review-scroll.ts';
 import { createChangedFile } from './helpers/fixtures.ts';
 
 const firstFile = createChangedFile('src/first.ts');
@@ -48,4 +48,29 @@ test('selected path from scroll ignores files without measured positions', () =>
 
   expect(getSelectedPathFromScroll(viewer, files, false)).toBe(thirdFile.path);
   expect(getTopForItem).toHaveBeenCalledTimes(3);
+});
+
+test('splits changed lines at the bottom of the viewport', () => {
+  // Items: a (0-100, 10 lines), b (100-300, 40 lines), c (300-400, 6 lines).
+  const tops: Record<string, number> = { a: 0, b: 100, c: 300 };
+  const items = [
+    { id: 'a', lineCount: 10 },
+    { id: 'b', lineCount: 40 },
+    { id: 'c', lineCount: 6 },
+  ];
+  const viewerAt = (scrollTop: number) => ({
+    getHeight: () => 100,
+    getScrollHeight: () => 400,
+    getScrollTop: () => scrollTop,
+    getTopForItem: (id: string) => tops[id],
+  });
+
+  expect(getScrollLineProgress(viewerAt(0), items)).toEqual({ left: 46, position: 0, read: 10 });
+  // The bottom edge is halfway through b.
+  expect(getScrollLineProgress(viewerAt(100), items)).toEqual({
+    left: 26,
+    position: 1 / 3,
+    read: 30,
+  });
+  expect(getScrollLineProgress(viewerAt(300), items)).toEqual({ left: 0, position: 1, read: 56 });
 });

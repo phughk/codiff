@@ -1677,6 +1677,45 @@ html[data-codiff-platform='darwin'] .sidebar {
   flex-direction: column;
 }
 
+.scroll-line-progress {
+  --scroll-line-progress-height: 40px;
+  background: color-mix(in srgb, var(--app-bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgb(127 127 127 / 0.22);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.08);
+  color: var(--muted);
+  corner-shape: squircle;
+  display: flex;
+  flex-direction: column;
+  font: 600 11px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  gap: 4px;
+  justify-content: center;
+  opacity: 0;
+  padding: 0 8px;
+  pointer-events: none;
+  position: absolute;
+  right: 16px;
+  top: calc(
+    8px + var(--scroll-line-progress-position) * (100% - var(--scroll-line-progress-height) - 16px)
+  );
+  height: var(--scroll-line-progress-height);
+  transition: opacity 180ms ease;
+  z-index: 20;
+}
+
+.scroll-line-progress.visible {
+  opacity: 1;
+  transition-duration: 60ms;
+}
+
+.scroll-line-progress-row {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+
 .window-drag-region {
   -webkit-app-region: drag;
   height: 12px;

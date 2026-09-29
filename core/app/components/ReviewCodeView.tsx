@@ -100,6 +100,7 @@ import {
   updateStickyHeaderState,
 } from '../../lib/review-comments.ts';
 import { getReviewIdentity, isReviewIdentityViewed } from '../../lib/review-identity.ts';
+import { getScrollLineProgress } from '../../lib/review-scroll.ts';
 import { applySearchHighlights } from '../../lib/search-highlights.ts';
 import { getSourceKey } from '../../lib/source.ts';
 import type {
@@ -131,6 +132,7 @@ import {
 } from './MarkdownDocumentEditor.tsx';
 import { ReadOnlyMarkdownView } from './ReadOnlyMarkdownView.tsx';
 import { ResolvedThreadDisclosure } from './ResolvedThreadDisclosure.tsx';
+import { ScrollLineProgress, type ScrollLineProgressHandle } from './ScrollLineProgress.tsx';
 import { DiffLineCountBadge } from './Sidebar.tsx';
 import { useCopiedState } from './useCopiedState.ts';
 
@@ -2669,6 +2671,7 @@ export function ReviewCodeView({
   scrollTarget,
   searchQuery,
   selectedPath,
+  showScrollProgress = false,
   showSourceDescription = true,
   showWhitespace,
   source,
@@ -2733,6 +2736,8 @@ export function ReviewCodeView({
   scrollTarget: ReviewScrollTarget | null;
   searchQuery: string;
   selectedPath: string | null;
+  /** Show the changed lines above and below the view beside the scrollbar while scrolling. */
+  showScrollProgress?: boolean;
   showSourceDescription?: boolean;
   showWhitespace: boolean;
   source: ReviewSource;
@@ -4506,9 +4511,28 @@ export function ReviewCodeView({
     ],
   );
 
+  const scrollProgressRef = useRef<ScrollLineProgressHandle>(null);
+  const scrollProgressItems = useMemo(
+    () =>
+      items.map((item) => ({
+        id: item.id,
+        lineCount:
+          item.type === 'diff'
+            ? item.fileDiff.hunks.reduce(
+                (count, hunk) => count + hunk.additionLines + hunk.deletionLines,
+                0,
+              )
+            : 0,
+      })),
+    [items],
+  );
+
   const handleScroll = useCallback(
     (_scrollTop: number, viewer: CodeViewInstance) => {
       onSelectPathFromScroll(viewer);
+      if (showScrollProgress) {
+        scrollProgressRef.current?.show(getScrollLineProgress(viewer, scrollProgressItems));
+      }
       if (onActiveBlockChange) {
         const activationTop = viewer.getScrollTop() + DEFAULT_PADDING;
         let activeBlockId: string | null = null;
@@ -4539,6 +4563,8 @@ export function ReviewCodeView({
       onSelectPathFromScroll,
       scheduleSearchHighlights,
       scheduleStickyHeaderStateUpdate,
+      scrollProgressItems,
+      showScrollProgress,
       updateRenderedIdentifierNavigation,
     ],
   );
@@ -4585,6 +4611,7 @@ export function ReviewCodeView({
   return (
     <>
       {renderedCodeView}
+      {showScrollProgress ? <ScrollLineProgress ref={scrollProgressRef} /> : null}
       {definitionLookup?.sourceKey === sourceKey && onOpenDefinition ? (
         <DefinitionPopover
           anchor={definitionLookup.anchor}

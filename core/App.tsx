@@ -2064,6 +2064,7 @@ export default function App() {
             forceExpandedPaths={diffSearchMatchPathSet}
             scrollTarget={scrollTarget}
             selectedPath={visibleSelectedPath}
+            showScrollProgress
             walkthroughNotes={emptyWalkthroughNotes}
           />
         )}
