@@ -11,7 +11,9 @@ import {
 import { formatLineCountNumber } from '../../lib/diff.ts';
 import type { ScrollLineProgress as Progress } from '../../lib/review-scroll.ts';
 
-const HIDE_DELAY_MS = 1200;
+// Matches Chromium's macOS overlay scrollbar: it hides 500ms after the last
+// scroll and fades out over 250ms (see the CSS transition).
+const HIDE_DELAY_MS = 500;
 
 export type ScrollLineProgressHandle = {
   show: (progress: Progress) => void;

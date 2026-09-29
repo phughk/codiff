@@ -1701,13 +1701,14 @@ html[data-codiff-platform='darwin'] .sidebar {
     8px + var(--scroll-line-progress-position) * (100% - var(--scroll-line-progress-height) - 16px)
   );
   height: var(--scroll-line-progress-height);
-  transition: opacity 180ms ease;
+  transition: opacity 250ms ease-in-out;
   z-index: 20;
 }
 
+/* The scrollbar thumb appears at once while scrolling. */
 .scroll-line-progress.visible {
   opacity: 1;
-  transition-duration: 60ms;
+  transition-duration: 0ms;
 }
 
 .scroll-line-progress-row {
