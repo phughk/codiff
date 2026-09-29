@@ -311,3 +311,48 @@ test('agent review adds comments and a rerun replaces only untouched ones', asyn
     ]);
   });
 });
+
+test('follow-up questions continue the agent conversation', async () => {
+  const replies = ['It keeps the cache in sync.', 'The session cache.'];
+  const askReviewAssistant = vi.fn(async () => ({
+    reply: replies.shift() ?? 'Done.',
+    status: 'ready' as const,
+  }));
+  window.codiff = { askReviewAssistant } as unknown as Window['codiff'];
+  await using view = await renderAppReviewComments(workingTreeState);
+  const { getState } = view;
+
+  await act(async () => {
+    getState().setReviewComments([comment]);
+  });
+  // A follow-up needs a first reply to continue.
+  await act(async () => {
+    getState().askCodex(comment.id, 'Which cache?');
+  });
+  expect(askReviewAssistant).not.toHaveBeenCalled();
+
+  await act(async () => {
+    getState().askCodex(comment.id);
+  });
+  await waitFor(() => expect(getState().reviewComments[0]?.codexReply?.status).toBe('ready'));
+  await act(async () => {
+    getState().askCodex(comment.id, ' Which cache? ');
+  });
+  expect(askReviewAssistant).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      conversation: [{ body: 'It keeps the cache in sync.', role: 'agent' }],
+      followUp: 'Which cache?',
+    }),
+  );
+  await waitFor(() =>
+    expect(getState().reviewComments[0]?.codexFollowUps).toEqual([
+      { question: 'Which cache?', reply: 'The session cache.', status: 'ready' },
+    ]),
+  );
+
+  // Asking from the note again starts a new conversation.
+  await act(async () => {
+    getState().askCodex(comment.id);
+  });
+  expect(getState().reviewComments[0]?.codexFollowUps).toBeUndefined();
+});

@@ -109,6 +109,13 @@ export type ReviewComment = {
   canEdit?: boolean;
   canReplyThread?: boolean;
   canResolveThread?: boolean;
+  /** Follow-up questions to the agent after its first reply, oldest first. */
+  codexFollowUps?: ReadonlyArray<{
+    error?: string;
+    question: string;
+    reply?: string;
+    status: 'error' | 'loading' | 'ready';
+  }>;
   codexReply?: {
     body?: string;
     error?: string;

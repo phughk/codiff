@@ -114,19 +114,68 @@ export function useAppReviewComments({
     [onCommentFileChange, reviewCommentsRef],
   );
 
+  const updateCodexFollowUp = useCallback(
+    (
+      commentId: string,
+      filePath: string,
+      index: number,
+      followUp: NonNullable<ReviewComment['codexFollowUps']>[number],
+    ) => {
+      setReviewComments((current) =>
+        current.map((comment) =>
+          comment.id === commentId
+            ? {
+                ...comment,
+                codexFollowUps: [
+                  ...(comment.codexFollowUps ?? []).slice(0, index),
+                  followUp,
+                  ...(comment.codexFollowUps ?? []).slice(index + 1),
+                ],
+              }
+            : comment,
+        ),
+      );
+      onCommentFileChange(filePath);
+    },
+    [onCommentFileChange],
+  );
+
+  /**
+   * Asks the agent about a note. With `followUp`, continues the conversation
+   * under the agent's reply; without it, starts a new one.
+   */
   const askCodex = useCallback(
-    (commentId: string) => {
+    (commentId: string, followUp?: string) => {
       const currentState = stateRef.current;
       const comment = reviewCommentsRef.current.find((candidate) => candidate.id === commentId);
+      const question = followUp?.trim() ?? '';
+      const followUps = comment?.codexFollowUps ?? [];
       if (
         !currentState ||
         !comment ||
         comment.body.trim().length === 0 ||
-        comment.codexReply?.status === 'loading'
+        comment.codexReply?.status === 'loading' ||
+        (followUp != null &&
+          (!question ||
+            comment.codexReply?.status !== 'ready' ||
+            followUps.some((turn) => turn.status === 'loading')))
       ) {
         return;
       }
 
+      const conversation = followUp
+        ? [
+            { body: comment.codexReply?.body ?? '', role: 'agent' as const },
+            ...followUps.flatMap((turn) =>
+              turn.status === 'ready' && turn.reply
+                ? [
+                    { body: turn.question, role: 'reviewer' as const },
+                    { body: turn.reply, role: 'agent' as const },
+                  ]
+                : [],
+            ),
+          ]
+        : [];
       const request: ReviewAssistantRequest = {
         comment: {
           body: comment.body,
@@ -136,35 +185,45 @@ export function useAppReviewComments({
           ...(comment.side ? { side: comment.side } : {}),
           ...getReviewCommentRangeProps(comment),
         },
+        ...(followUp ? { conversation, followUp: question } : {}),
         source: currentState.source,
       };
 
-      updateCodexReply(comment.id, comment.filePath, { status: 'loading' });
+      const index = followUps.length;
+      const settle = (reply: { error?: string; reply?: string }) => {
+        const status = reply.reply != null ? ('ready' as const) : ('error' as const);
+        if (followUp) {
+          updateCodexFollowUp(comment.id, comment.filePath, index, { question, ...reply, status });
+        } else {
+          updateCodexReply(comment.id, comment.filePath, {
+            ...(reply.reply != null ? { body: reply.reply } : { error: reply.error }),
+            status,
+          });
+        }
+      };
+
+      if (followUp) {
+        updateCodexFollowUp(comment.id, comment.filePath, index, { question, status: 'loading' });
+      } else {
+        setReviewComments((current) =>
+          current.map((candidate) =>
+            candidate.id === comment.id
+              ? { ...candidate, codexFollowUps: undefined, codexReply: { status: 'loading' } }
+              : candidate,
+          ),
+        );
+        onCommentFileChange(comment.filePath);
+      }
       void window.codiff
         .askReviewAssistant(request)
-        .then((result) => {
-          updateCodexReply(
-            comment.id,
-            comment.filePath,
-            result.status === 'ready'
-              ? {
-                  body: result.reply,
-                  status: 'ready',
-                }
-              : {
-                  error: result.reason,
-                  status: 'error',
-                },
-          );
-        })
-        .catch((error: unknown) => {
-          updateCodexReply(comment.id, comment.filePath, {
-            error: error instanceof Error ? error.message : String(error),
-            status: 'error',
-          });
-        });
+        .then((result) =>
+          settle(result.status === 'ready' ? { reply: result.reply } : { error: result.reason }),
+        )
+        .catch((error: unknown) =>
+          settle({ error: error instanceof Error ? error.message : String(error) }),
+        );
     },
-    [reviewCommentsRef, stateRef, updateCodexReply],
+    [onCommentFileChange, reviewCommentsRef, stateRef, updateCodexFollowUp, updateCodexReply],
   );
 
   const reviewWithAgent = useCallback(() => {

@@ -265,7 +265,12 @@ export const getReviewCommentsDigest = (comments: ReadonlyArray<ReviewComment>) 
           comment.body,
         )}:${comment.codexReply?.status ?? ''}:${getCommentTextDigest(
           comment.codexReply?.body,
-        )}:${getCommentTextDigest(comment.codexReply?.error)}:${
+        )}:${getCommentTextDigest(comment.codexReply?.error)}:${(comment.codexFollowUps ?? [])
+          .map(
+            (turn) =>
+              `${turn.status}${getCommentTextDigest(turn.reply)}${getCommentTextDigest(turn.error)}`,
+          )
+          .join(',')}:${
           comment.remoteSubmit?.status ?? ''
         }:${comment.remoteSubmit?.error ?? ''}:${comment.threadId ?? ''}:${
           comment.canResolveThread === true ? '1' : '0'

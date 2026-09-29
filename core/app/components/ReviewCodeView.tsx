@@ -1344,7 +1344,7 @@ function ReviewCommentEditor({
   focusEditorRef: (node: MarkdownEditorHandle | null) => void;
   identity: GitIdentity | null;
   keymap: CodiffKeymap;
-  onAskCodex?: (commentId: string) => void;
+  onAskCodex?: (commentId: string, followUp?: string) => void;
   onCommentBlur: (comment: ReviewComment, body: string, flushDraft: () => void) => void;
   onCommentDraftChange?: (comment: Pick<ReviewComment, 'body' | 'id'> | null) => void;
   onCommentFocus: (comment: ReviewComment) => void;
@@ -1928,31 +1928,42 @@ function ReviewCommentEditor({
         </div>
       </div>
       {comment.codexReply ? (
-        <div className="review-comment codex">
-          <AgentAvatar agentId={agentId} />
-          <div className="review-comment-body codex">
-            <div className="review-comment-header codex">
-              <strong>{agentLabel}</strong>
-            </div>
-            <div
-              className={`review-comment-codex-reply${
-                comment.codexReply.status === 'loading' ? ' is-loading' : ''
-              }${comment.codexReply.status === 'error' ? ' error' : ''}`}
-            >
-              {comment.codexReply.status === 'loading' ? (
-                <span className="review-comment-codex-loading">Waiting for {agentLabel}…</span>
-              ) : (
+        <AgentReply agentId={agentId} agentLabel={agentLabel} reply={comment.codexReply} />
+      ) : null}
+      {comment.codexFollowUps?.map((turn, index) => (
+        <Fragment key={index}>
+          <div className="review-comment codex-follow-up">
+            <IdentityReviewAvatar identity={identity} />
+            <div className="review-comment-body">
+              <div className="review-comment-header read-only">
+                <strong>{displayName}</strong>
+              </div>
+              <div className="review-comment-codex-reply">
                 <ReadOnlyMarkdown
-                  ariaLabel={`${agentLabel} reply`}
+                  ariaLabel="Follow-up question"
                   className="review-comment-codex-reply-markdown"
                   density="compact"
-                  value={comment.codexReply.body ?? comment.codexReply.error ?? ''}
+                  value={turn.question}
                   variant="embedded"
                 />
-              )}
+              </div>
             </div>
           </div>
-        </div>
+          <AgentReply
+            agentId={agentId}
+            agentLabel={agentLabel}
+            reply={{ body: turn.reply, error: turn.error, status: turn.status }}
+          />
+        </Fragment>
+      ))}
+      {onAskCodex &&
+      !comment.isReadOnly &&
+      comment.codexReply?.status === 'ready' &&
+      !comment.codexFollowUps?.some((turn) => turn.status === 'loading') ? (
+        <AgentFollowUpInput
+          agentLabel={agentLabel}
+          onSend={(question) => onAskCodex(comment.id, question)}
+        />
       ) : null}
     </Fragment>
   );
@@ -1986,6 +1997,90 @@ const noopResolveThread = () => {};
 // layout pass is needed when the description body settles.
 const noopLayoutReady = () => {};
 
+function AgentReply({
+  agentId,
+  agentLabel,
+  reply,
+}: {
+  agentId: 'codex' | 'claude' | 'opencode' | 'pi';
+  agentLabel: string;
+  reply: { body?: string; error?: string; status: 'error' | 'loading' | 'ready' };
+}) {
+  return (
+    <div className="review-comment codex">
+      <AgentAvatar agentId={agentId} />
+      <div className="review-comment-body codex">
+        <div className="review-comment-header codex">
+          <strong>{agentLabel}</strong>
+        </div>
+        <div
+          className={`review-comment-codex-reply${reply.status === 'loading' ? ' is-loading' : ''}${
+            reply.status === 'error' ? ' error' : ''
+          }`}
+        >
+          {reply.status === 'loading' ? (
+            <span className="review-comment-codex-loading">Waiting for {agentLabel}…</span>
+          ) : (
+            <ReadOnlyMarkdown
+              ariaLabel={`${agentLabel} reply`}
+              className="review-comment-codex-reply-markdown"
+              density="compact"
+              value={reply.body ?? reply.error ?? ''}
+              variant="embedded"
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Continues the conversation with the agent under its reply. */
+function AgentFollowUpInput({
+  agentLabel,
+  onSend,
+}: {
+  agentLabel: string;
+  onSend: (question: string) => void;
+}) {
+  const [question, setQuestion] = useState('');
+  const send = () => {
+    if (question.trim()) {
+      onSend(question.trim());
+      setQuestion('');
+    }
+  };
+
+  return (
+    <div className="review-comment-follow-up">
+      <textarea
+        aria-label={`Reply to ${agentLabel}`}
+        className="review-comment-follow-up-input"
+        onChange={(event) => setQuestion(event.target.value)}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            send();
+          }
+        }}
+        placeholder={`Reply to ${agentLabel}…`}
+        rows={1}
+        value={question}
+      />
+      <button
+        className="review-comment-action"
+        disabled={!question.trim()}
+        onClick={send}
+        title="Send (Enter). Shift+Enter adds a new line."
+        type="button"
+      >
+        Send
+      </button>
+    </div>
+  );
+}
+
 function ReviewCommentThreadGroup({
   agentId,
   agentLabel,
@@ -2017,7 +2112,7 @@ function ReviewCommentThreadGroup({
   focusEditorRef: (node: MarkdownEditorHandle | null) => void;
   identity: GitIdentity | null;
   keymap: CodiffKeymap;
-  onAskCodex?: (commentId: string) => void;
+  onAskCodex?: (commentId: string, followUp?: string) => void;
   onCommentBlur: (comment: ReviewComment, body: string, flushDraft: () => void) => void;
   onCommentDraftChange?: (comment: Pick<ReviewComment, 'body' | 'id'> | null) => void;
   onCommentFocus: (comment: ReviewComment) => void;
@@ -2197,7 +2292,7 @@ function ReviewAnnotation({
   focusCommentRequest: number;
   identity: GitIdentity | null;
   keymap: CodiffKeymap;
-  onAskCodex?: (commentId: string) => void;
+  onAskCodex?: (commentId: string, followUp?: string) => void;
   onCommentBlur: (comment: ReviewComment, body: string, flushDraft: () => void) => void;
   onCommentDraftChange?: (comment: Pick<ReviewComment, 'body' | 'id'> | null) => void;
   onCommentFocus: (comment: ReviewComment) => void;
@@ -2710,7 +2805,7 @@ export function ReviewCodeView({
   keymap: CodiffKeymap;
   loadingSectionIds: ReadonlySet<string>;
   onActiveBlockChange?: (blockId: string) => void;
-  onAskCodex?: (commentId: string) => void;
+  onAskCodex?: (commentId: string, followUp?: string) => void;
   onCommentDraftChange?: (comment: Pick<ReviewComment, 'body' | 'id'> | null) => void;
   onCreateComment: (comment: Omit<ReviewComment, 'body' | 'id'>) => void;
   onDeleteComment: (commentId: string) => void;

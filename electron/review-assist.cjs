@@ -5,6 +5,8 @@ const { parseJSONMessage, truncate } = require('./agent-shared.cjs');
 const MAX_PATCH_CHARS = 24_000;
 const MAX_OTHER_FILES = 40;
 const MAX_SOURCE_DESCRIPTION_CHARS = 4_000;
+const MAX_CONVERSATION_TURNS = 20;
+const MAX_TURN_CHARS = 4_000;
 
 /**
  * @typedef {import('../core/types.ts').ChangedFile} ChangedFile
@@ -33,6 +35,24 @@ const getFileDigest = (file) => ({
     .map((section) => section.summary?.reason)
     .filter((summary) => typeof summary === 'string' && summary.trim()),
 });
+
+/** @param {Partial<ReviewAssistantRequest> | null | undefined} request */
+const getConversationInput = (request) => {
+  const followUp = typeof request?.followUp === 'string' ? request.followUp.trim() : '';
+  if (!followUp) {
+    return {};
+  }
+  const conversation = (Array.isArray(request?.conversation) ? request.conversation : [])
+    .filter(
+      (turn) =>
+        (turn?.role === 'agent' || turn?.role === 'reviewer') &&
+        typeof turn.body === 'string' &&
+        turn.body.trim(),
+    )
+    .slice(-MAX_CONVERSATION_TURNS)
+    .map((turn) => ({ body: truncate(turn.body.trim(), MAX_TURN_CHARS), role: turn.role }));
+  return { conversation, followUp: truncate(followUp, MAX_TURN_CHARS) };
+};
 
 /** @param {RepositoryState} state @param {Partial<ReviewAssistantRequest> | null | undefined} request */
 const buildReviewAssistantInput = (state, request) => {
@@ -72,6 +92,7 @@ const buildReviewAssistantInput = (state, request) => {
       .slice(0, MAX_OTHER_FILES)
       .map(getFileDigest),
     root: state.root,
+    ...getConversationInput(request),
     source:
       state.source.type === 'pull-request' && typeof state.source.description === 'string'
         ? {
@@ -96,7 +117,14 @@ Use only the repository change digest below; do not inspect the repository or ru
 If there is walkthrough context, use it as review orientation, not as proof.
 If source.description is present, treat it as author-written PR/MR intent and orientation, not proof of behavior. The changed files and patch excerpt remain the source of truth for what changed.
 You are the code-review expert in this conversation, so explain the change directly.
-
+${
+  getConversationInput(request).followUp
+    ? `
+The reviewer is continuing the conversation. The digest's conversation lists your earlier replies ("agent") and the reviewer's follow-ups ("reviewer") after the original note, oldest first; followUp is the reviewer's newest message.
+Answer followUp directly. Build on what was already said instead of repeating it, and correct an earlier reply if the diff shows it was wrong.
+`
+    : ''
+}
 Your job:
 - Turn vague unease into coherent, actionable review feedback.
 - If the note asks "why", explain why this change is needed based on the diff.

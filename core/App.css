@@ -3814,6 +3814,34 @@ diffs-container .review-comment-thread {
   word-break: break-word;
 }
 
+.review-comment-follow-up {
+  align-items: flex-end;
+  display: flex;
+  gap: 6px;
+  margin-left: 42px;
+  min-width: 0;
+}
+
+.review-comment-follow-up-input {
+  background: var(--file-bg);
+  border: 1px solid var(--file-border);
+  border-radius: 14px;
+  color: var(--text);
+  corner-shape: squircle;
+  field-sizing: content;
+  flex: 1;
+  font: 13px/1.4 var(--font-sans);
+  max-height: 160px;
+  min-width: 0;
+  outline: none;
+  padding: 7px 12px;
+  resize: none;
+}
+
+.review-comment-follow-up-input:focus {
+  border-color: var(--sidebar-ref);
+}
+
 .review-comment-codex-reply.is-loading {
   animation: codex-loading-pulse 1600ms ease-in-out infinite;
   color: var(--muted);

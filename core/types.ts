@@ -694,6 +694,10 @@ export type ReviewAssistantRequest = {
     startLineNumber?: number;
     startSide?: 'additions' | 'deletions';
   };
+  /** Earlier turns after the note itself, oldest first, when continuing a conversation. */
+  conversation?: ReadonlyArray<{ body: string; role: 'agent' | 'reviewer' }>;
+  /** The reviewer's newest message when continuing a conversation. */
+  followUp?: string;
   source?: ReviewSource;
   walkthroughNote?: {
     action: 'review' | 'scan' | 'skim';

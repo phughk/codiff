@@ -225,3 +225,38 @@ test('normalizes malformed review assistant replies without exposing raw payload
     status: 'ready',
   });
 });
+
+test('review assistant continues a conversation with its earlier turns', async () => {
+  const state = createPullRequestAssistantState('');
+  const comment = {
+    body: 'Why synchronize here?',
+    filePath: 'src/state.ts',
+    sectionId: 'src/state.ts:pull-request:42',
+  };
+
+  const first = await readReply(state, { comment });
+  expect(first.prompt).not.toContain('continuing the conversation');
+  expect(first.digest).not.toHaveProperty('followUp');
+
+  const { digest, prompt } = await readReply(state, {
+    comment,
+    conversation: [
+      { body: 'It keeps the cache in sync.', role: 'agent' },
+      { body: 'Which cache?', role: 'reviewer' },
+      { body: 'The session cache.', role: 'agent' },
+      { body: '  ', role: 'reviewer' },
+      { body: 'ignored', role: 'system' },
+    ],
+    followUp: '  What breaks without it?  ',
+  });
+  expect(prompt).toContain('continuing the conversation');
+  expect(digest).toMatchObject({
+    comment: { body: 'Why synchronize here?' },
+    conversation: [
+      { body: 'It keeps the cache in sync.', role: 'agent' },
+      { body: 'Which cache?', role: 'reviewer' },
+      { body: 'The session cache.', role: 'agent' },
+    ],
+    followUp: 'What breaks without it?',
+  });
+});
