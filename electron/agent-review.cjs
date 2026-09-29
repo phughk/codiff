@@ -313,7 +313,12 @@ const normalizeAgentReview = (parsed, hunksByPath) => {
 const readAgentReview = async (state, agent, agentOptions) => {
   const input = buildAgentReviewInput(state);
   if (input.hunkCount === 0) {
-    return { comments: [], status: 'ready', summary: 'There are no reviewable text changes.' };
+    return {
+      agentId: agent.id,
+      comments: [],
+      status: 'ready',
+      summary: 'There are no reviewable text changes.',
+    };
   }
 
   try {
@@ -332,6 +337,7 @@ const readAgentReview = async (state, agent, agentOptions) => {
       },
     );
     return {
+      agentId: agent.id,
       ...normalizeAgentReview(parseJSONMessage(response), input.hunksByPath),
       status: 'ready',
     };

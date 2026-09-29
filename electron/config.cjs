@@ -36,7 +36,7 @@ const normalizeWalkthroughCacheMaxAgeDays = (value) =>
 /** @returns {CodiffConfig} */
 const createDefaultConfig = () => ({
   keymap: { ...defaultConfigTemplate.keymap },
-  settings: { ...defaultConfigTemplate.settings },
+  settings: structuredClone(defaultConfigTemplate.settings),
 });
 
 const getConfigDir = () => join(homedir(), '.codiff');
@@ -167,6 +167,33 @@ const normalizeAgentBackend = (backend) =>
   backend === 'codex' || backend === 'claude' || backend === 'opencode' || backend === 'pi'
     ? backend
     : 'codex';
+
+/** @type {ReadonlyArray<import('../core/config/types.ts').CodiffAgentTask>} */
+const AGENT_TASKS = ['ask', 'review', 'walkthrough'];
+
+/**
+ * @param {unknown} value
+ * @returns {import('../core/config/types.ts').CodiffSettings['taskAgents']}
+ */
+const normalizeTaskAgents = (value) => {
+  const raw = value && typeof value === 'object' ? /** @type {Record<string, any>} */ (value) : {};
+  return /** @type {import('../core/config/types.ts').CodiffSettings['taskAgents']} */ (
+    Object.fromEntries(
+      AGENT_TASKS.map((task) => {
+        const agent =
+          raw[task]?.agent === 'codex' ||
+          raw[task]?.agent === 'claude' ||
+          raw[task]?.agent === 'opencode' ||
+          raw[task]?.agent === 'pi'
+            ? raw[task].agent
+            : '';
+        // A model only means something for a chosen agent.
+        const model = agent && typeof raw[task]?.model === 'string' ? raw[task].model.trim() : '';
+        return [task, { agent, model }];
+      }),
+    )
+  );
+};
 
 /** @param {unknown} family @returns {string} */
 const normalizeCodeFontFamily = (family) => (typeof family === 'string' ? family.trim() : '');
@@ -316,6 +343,7 @@ const mergeConfig = (raw) => {
           ? rawSettings.reviewCommentsPrefix
           : defaults.settings.reviewCommentsPrefix,
       sidebarPosition: normalizeSidebarPosition(rawSettings.sidebarPosition),
+      taskAgents: normalizeTaskAgents(rawSettings.taskAgents),
       showOutdated:
         typeof rawSettings.showOutdated === 'boolean'
           ? rawSettings.showOutdated

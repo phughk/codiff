@@ -99,6 +99,69 @@
           "default": false,
           "description": "Show whitespace-only changes in diffs and file line counts."
         },
+        "taskAgents": {
+          "type": "object",
+          "additionalProperties": false,
+          "default": {
+            "ask": { "agent": "", "model": "" },
+            "review": { "agent": "", "model": "" },
+            "walkthrough": { "agent": "", "model": "" }
+          },
+          "description": "Choose a different agent or model per task: 'ask' answers Ask on review comments, 'review' writes Review comments on the diff, and 'walkthrough' generates walkthroughs and their commit messages. Empty values fall back to agentBackend and the agent's model setting.",
+          "properties": {
+            "ask": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "agent": {
+                  "type": "string",
+                  "enum": ["", "codex", "claude", "opencode", "pi"],
+                  "default": "",
+                  "description": "Agent CLI for this task. Leave empty to use agentBackend."
+                },
+                "model": {
+                  "type": "string",
+                  "default": "",
+                  "description": "Model for this task. Leave empty to use the agent's model setting, such as claudeModel."
+                }
+              }
+            },
+            "review": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "agent": {
+                  "type": "string",
+                  "enum": ["", "codex", "claude", "opencode", "pi"],
+                  "default": "",
+                  "description": "Agent CLI for this task. Leave empty to use agentBackend."
+                },
+                "model": {
+                  "type": "string",
+                  "default": "",
+                  "description": "Model for this task. Leave empty to use the agent's model setting, such as claudeModel."
+                }
+              }
+            },
+            "walkthrough": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "agent": {
+                  "type": "string",
+                  "enum": ["", "codex", "claude", "opencode", "pi"],
+                  "default": "",
+                  "description": "Agent CLI for this task. Leave empty to use agentBackend."
+                },
+                "model": {
+                  "type": "string",
+                  "default": "",
+                  "description": "Model for this task. Leave empty to use the agent's model setting, such as claudeModel."
+                }
+              }
+            }
+          }
+        },
         "theme": {
           "type": "string",
           "enum": ["system", "light", "dark"],

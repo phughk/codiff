@@ -1,4 +1,5 @@
 import { useCallback, useState, type RefObject } from 'react';
+import type { CodiffAgentBackend } from '../../config/types.ts';
 import type { ReviewComment } from '../../lib/app-types.ts';
 import {
   getPendingPullRequestReviewComments,
@@ -21,8 +22,11 @@ export type AgentReviewState =
   | { commentCount: number; status: 'ready'; summary: string }
   | { reason: string; status: 'error' };
 
-const toAgentReviewComment = (comment: AgentReviewComment): ReviewComment => ({
-  agentReview: { originalBody: comment.body, severity: comment.severity },
+const toAgentReviewComment = (
+  comment: AgentReviewComment,
+  agentId: CodiffAgentBackend,
+): ReviewComment => ({
+  agentReview: { agentId, originalBody: comment.body, severity: comment.severity },
   body: comment.body,
   filePath: comment.filePath,
   id: crypto.randomUUID(),
@@ -186,7 +190,9 @@ export function useAppReviewComments({
           return;
         }
 
-        const comments = result.comments.map(toAgentReviewComment);
+        const comments = result.comments.map((comment) =>
+          toAgentReviewComment(comment, result.agentId),
+        );
         const changedPaths = new Set(comments.map((comment) => comment.filePath));
         for (const comment of reviewCommentsRef.current) {
           if (isUntouchedAgentReviewComment(comment)) {

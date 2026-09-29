@@ -136,6 +136,11 @@ create the file with defaults and open it in your editor. The file supports JSON
 trailing commas, includes a JSON schema reference for editor completion, and is watched while Codiff
 is running so changes apply to open windows.
 
+`settings.agentBackend` and the per-agent model settings pick the default agent and model. To run
+walkthroughs (and their commit messages), Review, or Ask on a different agent or model, use
+**Agent per Task** in the app menu, or set `settings.taskAgents`: an empty `agent` follows the
+default, and an empty `model` uses that agent's model setting.
+
 Set `settings.showWhitespace` to `true` to show whitespace-only changes in diffs and file line
 counts; when it is `false`, Codiff hides those changes from the working-tree review state.
 
@@ -155,6 +160,11 @@ counts; when it is `false`, Codiff hides those changes from the working-tree rev
     "opencodeModel": "opencode-default",
     "sidebarPosition": "left",
     "showWhitespace": false,
+    "taskAgents": {
+      "ask": { "agent": "", "model": "" },
+      "review": { "agent": "claude", "model": "claude-opus-4-8" },
+      "walkthrough": { "agent": "", "model": "" },
+    },
     "theme": "system",
     "walkthroughCacheMaxAgeDays": 7,
     "walkthroughPrompt": "",

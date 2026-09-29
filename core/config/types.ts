@@ -1,6 +1,14 @@
 export type CodiffDiffStyle = 'split' | 'unified';
 export type CodiffTheme = 'system' | 'light' | 'dark';
 export type CodiffAgentBackend = 'codex' | 'claude' | 'opencode' | 'pi';
+/** The AI operations whose agent and model can be chosen separately. */
+export type CodiffAgentTask = 'ask' | 'review' | 'walkthrough';
+
+/** An empty `agent` uses the default agent; an empty `model` uses that agent's model setting. */
+export type CodiffTaskAgent = {
+  agent: CodiffAgentBackend | '';
+  model: string;
+};
 
 export type CodiffSettings = {
   agentBackend: CodiffAgentBackend;
@@ -19,6 +27,7 @@ export type CodiffSettings = {
   showOutdated: boolean;
   showWhitespace: boolean;
   sidebarPosition: 'left' | 'right';
+  taskAgents: Record<CodiffAgentTask, CodiffTaskAgent>;
   theme: CodiffTheme;
   walkthroughCacheMaxAgeDays: number;
   walkthroughPrompt: string;

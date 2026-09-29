@@ -143,3 +143,26 @@ test('npm package includes runtime config and bundled skills', () => {
   expect(packageJson.files).toContain('opencode');
   expect(packageJson.files).toContain('pi');
 });
+
+test('electron config normalizes per-task agents', () => {
+  expect(readElectronConfig({}).settings.taskAgents).toEqual({
+    ask: { agent: '', model: '' },
+    review: { agent: '', model: '' },
+    walkthrough: { agent: '', model: '' },
+  });
+  expect(
+    readElectronConfig({
+      settings: {
+        taskAgents: {
+          ask: { agent: 'nope', model: 'x' },
+          review: { agent: 'claude', model: ' claude-opus-4-8 ' },
+          walkthrough: { model: 'orphan' },
+        },
+      },
+    }).settings.taskAgents,
+  ).toEqual({
+    ask: { agent: '', model: '' },
+    review: { agent: 'claude', model: 'claude-opus-4-8' },
+    walkthrough: { agent: '', model: '' },
+  });
+});

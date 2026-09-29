@@ -59,6 +59,7 @@ const {
 } = require('./config.cjs');
 const { readReviewAssistantReply } = require('./review-assist.cjs');
 const { readAgentReview } = require('./agent-review.cjs');
+const { TASK_LABELS, resolveTaskAgent } = require('./task-agents.cjs');
 const { releasePageUrl } = require('./update-check.cjs');
 const { createUpdater, resolveUpdateStrategy } = require('./updater.cjs');
 const { parseReviewUrl, resolveReviewUrl } = require('./review-source.cjs');
@@ -205,14 +206,50 @@ const readInitialRepositoryStateWithConfig = (repositoryPath, launchOptions) =>
       })
     : readRepositoryStateWithConfig(repositoryPath, launchOptions.source);
 
-/** @param {number} webContentsId */
-const resolveWindowAgent = (webContentsId) => {
+/** @param {number} webContentsId @returns {'codex' | 'claude' | 'opencode' | 'pi'} */
+const getWindowAgentId = (webContentsId) => {
   const override = windowLaunchOptions.get(webContentsId)?.agentBackend;
-  return getAgent(
-    override === 'codex' || override === 'claude' || override === 'opencode' || override === 'pi'
-      ? override
-      : config.settings.agentBackend,
+  return override === 'codex' ||
+    override === 'claude' ||
+    override === 'opencode' ||
+    override === 'pi'
+    ? override
+    : config.settings.agentBackend;
+};
+
+/** @param {number} webContentsId */
+const resolveWindowAgent = (webContentsId) => getAgent(getWindowAgentId(webContentsId));
+
+/**
+ * The agent and run options for one AI task in a window, honoring the task's
+ * own agent and model choice from the Agent per Task menu.
+ *
+ * @param {number} webContentsId
+ * @param {import('../core/config/types.ts').CodiffAgentTask} task
+ */
+const resolveWindowTaskAgent = (webContentsId, task) => {
+  const { agent, model, overridesModel } = resolveTaskAgent(
+    config.settings,
+    task,
+    getWindowAgentId(webContentsId),
   );
+  return {
+    agent,
+    agentOptions: {
+      fallbackModel: agent.fallbackModel,
+      model,
+      /** @param {string} fallbackModel */
+      onModelFallback: async (fallbackModel) => {
+        if (overridesModel) {
+          selectTaskAgent(task, agent.id, fallbackModel);
+        } else {
+          updateConfig({
+            settings: { ...config.settings, [agent.modelSettingKey]: fallbackModel },
+          });
+        }
+      },
+    },
+  };
 };
 
 /** @param {'codex' | 'claude' | 'opencode' | 'pi'} agentId */
@@ -419,15 +456,24 @@ const selectAgentModel = (agent, model) => {
   updateConfig({ settings: { ...config.settings, [agent.modelSettingKey]: normalized } });
 };
 
-/** @param {import('./agent.cjs').Agent} agent */
-const getAgentOptions = (agent) => ({
-  fallbackModel: agent.fallbackModel,
-  model: config.settings[agent.modelSettingKey],
-  /** @param {string} fallbackModel */
-  onModelFallback: async (fallbackModel) => {
-    updateConfig({ settings: { ...config.settings, [agent.modelSettingKey]: fallbackModel } });
-  },
-});
+/**
+ * @param {import('../core/config/types.ts').CodiffAgentTask} task
+ * @param {'' | 'codex' | 'claude' | 'opencode' | 'pi'} agentId An empty id uses the default agent.
+ * @param {string} [model]
+ */
+const selectTaskAgent = (task, agentId, model = '') => {
+  updateConfig({
+    settings: {
+      ...config.settings,
+      taskAgents: {
+        ...config.settings.taskAgents,
+        [task]: agentId
+          ? { agent: agentId, model: getAgent(agentId).normalizeModel(model) }
+          : { agent: '', model: '' },
+      },
+    },
+  });
+};
 
 /** @param {CodiffTheme} theme */
 const updateTheme = (theme) => {
@@ -568,6 +614,56 @@ const buildModelSubmenu = () => {
   }));
 };
 
+/**
+ * One submenu per task: "Default" follows the Agent and Model menus, and each
+ * agent lists its models so a task can run on a different agent and model.
+ *
+ * @returns {Array<import('electron').MenuItemConstructorOptions>}
+ */
+const buildTaskAgentSubmenu = () =>
+  /** @type {Array<import('../core/config/types.ts').CodiffAgentTask>} */ ([
+    'walkthrough',
+    'review',
+    'ask',
+  ]).map((task) => {
+    const choice = config.settings.taskAgents[task];
+    const defaultAgent = getActiveAgent();
+    const defaultModel = config.settings[defaultAgent.modelSettingKey];
+    const defaultModelLabel =
+      getAgentMenuModels(defaultAgent, defaultModel).find((model) => model.id === defaultModel)
+        ?.label ?? defaultModel;
+    return {
+      label: TASK_LABELS[task],
+      submenu: [
+        {
+          checked: !choice.agent,
+          click: () => selectTaskAgent(task, ''),
+          label: `Default (${defaultAgent.label} · ${defaultModelLabel})`,
+          type: 'checkbox',
+        },
+        { type: 'separator' },
+        ...listAgents().map((agent) => {
+          const selectedModel =
+            choice.agent === agent.id
+              ? choice.model || config.settings[agent.modelSettingKey]
+              : null;
+          return {
+            label: `${choice.agent === agent.id ? '✓ ' : ''}${agent.label}`,
+            submenu: getAgentMenuModels(
+              agent,
+              selectedModel ?? config.settings[agent.modelSettingKey],
+            ).map((model) => ({
+              checked: selectedModel === model.id,
+              click: () => selectTaskAgent(task, agent.id, model.id),
+              label: model.label,
+              type: /** @type {const} */ ('checkbox'),
+            })),
+          };
+        }),
+      ],
+    };
+  });
+
 const getInstallSkillMenuItem = () =>
   buildInstallSkillMenuItem(
     (skill, browserWindow) => void skillInstallers.get(skill.id)?.install(browserWindow),
@@ -625,6 +721,10 @@ const buildApplicationMenu = () =>
                   label: 'Model',
                   submenu: buildModelSubmenu(),
                 },
+                {
+                  label: 'Agent per Task',
+                  submenu: buildTaskAgentSubmenu(),
+                },
                 { type: 'separator' },
                 {
                   click: () => {
@@ -664,6 +764,10 @@ const buildApplicationMenu = () =>
                 {
                   label: 'Model',
                   submenu: buildModelSubmenu(),
+                },
+                {
+                  label: 'Agent per Task',
+                  submenu: buildTaskAgentSubmenu(),
                 },
                 { type: 'separator' },
                 {
@@ -1650,15 +1754,24 @@ ipcMain.handle('codiff:getNarrativeWalkthrough', async (event, source, options) 
       }
     }
 
+    // The launching session belongs to the window's agent, whichever agent
+    // writes the walkthrough.
     const walkthroughContext = mergeWalkthroughContexts(
       launchOptions?.walkthroughContext,
       await agent.readSessionContext(launchOptions?.[agent.sessionLaunchOptionKey]),
     );
-    const agentOptions = getAgentOptions(agent);
-    const walkthroughModel = resolveNarrativeWalkthroughModel(state, agent, agentOptions.model);
+    const { agent: walkthroughAgent, agentOptions } = resolveWindowTaskAgent(
+      event.sender.id,
+      'walkthrough',
+    );
+    const walkthroughModel = resolveNarrativeWalkthroughModel(
+      state,
+      walkthroughAgent,
+      agentOptions.model,
+    );
     const walkthroughPrompt = config.settings.walkthroughPrompt;
     if (!options?.force) {
-      const cachedWalkthrough = walkthroughCache.read(state, agent, walkthroughModel, {
+      const cachedWalkthrough = walkthroughCache.read(state, walkthroughAgent, walkthroughModel, {
         context: walkthroughContext,
         customPrompt: walkthroughPrompt,
       });
@@ -1671,7 +1784,7 @@ ipcMain.handle('codiff:getNarrativeWalkthrough', async (event, source, options) 
     const onModelFallback = agentOptions.onModelFallback;
     const result = await readNarrativeWalkthrough(
       state,
-      agent,
+      walkthroughAgent,
       {
         ...agentOptions,
         model: walkthroughModel,
@@ -1686,7 +1799,7 @@ ipcMain.handle('codiff:getNarrativeWalkthrough', async (event, source, options) 
       options?.previousWalkthrough,
     );
     if (result.status === 'ready') {
-      walkthroughCache.write(state, agent, generatedModel, result.walkthrough, {
+      walkthroughCache.write(state, walkthroughAgent, generatedModel, result.walkthrough, {
         customPrompt: walkthroughPrompt,
       });
     }
@@ -1746,8 +1859,8 @@ ipcMain.handle('codiff:askReviewAssistant', async (event, request) => {
     repositoryPath,
     request?.source || launchOptions?.source,
   );
-  const agent = resolveWindowAgent(event.sender.id);
-  return readReviewAssistantReply(state, request, agent, getAgentOptions(agent));
+  const { agent, agentOptions } = resolveWindowTaskAgent(event.sender.id, 'ask');
+  return readReviewAssistantReply(state, request, agent, agentOptions);
 });
 
 ipcMain.handle('codiff:reviewDiffWithAgent', async (event, request) => {
@@ -1757,8 +1870,8 @@ ipcMain.handle('codiff:reviewDiffWithAgent', async (event, request) => {
     repositoryPath,
     request?.source || launchOptions?.source,
   );
-  const agent = resolveWindowAgent(event.sender.id);
-  return readAgentReview(state, agent, getAgentOptions(agent));
+  const { agent, agentOptions } = resolveWindowTaskAgent(event.sender.id, 'review');
+  return readAgentReview(state, agent, agentOptions);
 });
 
 ipcMain.handle('codiff:createWalkthroughCommit', async (event, request) => {
@@ -1781,8 +1894,8 @@ ipcMain.handle('codiff:updateWalkthroughCommitMessage', async (event, request) =
     repositoryPath,
     request?.source || launchOptions?.source,
   );
-  const agent = resolveWindowAgent(event.sender.id);
-  return readCommitMessageReply(state, request, agent, getAgentOptions(agent));
+  const { agent, agentOptions } = resolveWindowTaskAgent(event.sender.id, 'walkthrough');
+  return readCommitMessageReply(state, request, agent, agentOptions);
 });
 
 ipcMain.handle('codiff:submitPullRequestComment', async (event, request) => {

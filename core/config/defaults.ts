@@ -10,7 +10,7 @@ const defaultConfigTemplate = defaults as CodiffConfig;
 
 export const createDefaultConfig = (): CodiffConfig => ({
   keymap: { ...defaultConfigTemplate.keymap },
-  settings: { ...defaultConfigTemplate.settings },
+  settings: structuredClone(defaultConfigTemplate.settings),
 });
 
 export const defaultKeymap: Readonly<CodiffKeymap> = Object.freeze({

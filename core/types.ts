@@ -734,6 +734,7 @@ export type AgentReviewRequest = {
 
 export type AgentReviewResult =
   | {
+      agentId: 'codex' | 'claude' | 'opencode' | 'pi';
       comments: ReadonlyArray<AgentReviewComment>;
       status: 'ready';
       summary: string;

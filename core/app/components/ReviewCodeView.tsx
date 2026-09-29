@@ -43,6 +43,7 @@ import {
 } from 'react';
 import { getShortcutLabel, matchesShortcut } from '../../config/keymap.ts';
 import type { CodiffDiffStyle, CodiffKeymap } from '../../config/types.ts';
+import { getAgentLabel } from '../../lib/app-constants.ts';
 import type {
   CodeViewInstance,
   CodeViewItemMetadata,
@@ -1672,7 +1673,7 @@ function ReviewCommentEditor({
         {comment.author ? (
           <ReviewAvatar author={comment.author} />
         ) : comment.agentReview ? (
-          <AgentAvatar agentId={agentId} />
+          <AgentAvatar agentId={comment.agentReview.agentId} />
         ) : (
           <IdentityReviewAvatar identity={identity} />
         )}
@@ -1691,7 +1692,7 @@ function ReviewCommentEditor({
             {comment.agentReview ? (
               <span
                 className={`review-comment-severity ${comment.agentReview.severity}`}
-                title={`Left by ${agentLabel} when reviewing the diff. Edit it before posting, or delete it.`}
+                title={`Left by ${displayName} when reviewing the diff. Edit it before posting, or delete it.`}
               >
                 {agentReviewSeverityLabel[comment.agentReview.severity]}
               </span>
@@ -2094,7 +2095,7 @@ function ReviewCommentThreadGroup({
         const displayName = comment.author
           ? getReviewAuthorDisplayName(comment.author)
           : comment.agentReview
-            ? agentLabel
+            ? getAgentLabel(comment.agentReview.agentId)
             : getGitIdentityDisplayName(identity);
 
         return (

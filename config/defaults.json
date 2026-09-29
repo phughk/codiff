@@ -14,6 +14,11 @@
     "piModel": "pi-default",
     "reviewCommentsPrefix": "# Address these Review Comments",
     "sidebarPosition": "left",
+    "taskAgents": {
+      "ask": { "agent": "", "model": "" },
+      "review": { "agent": "", "model": "" },
+      "walkthrough": { "agent": "", "model": "" }
+    },
     "showOutdated": false,
     "showWhitespace": false,
     "theme": "system",

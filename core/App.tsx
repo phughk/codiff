@@ -1610,6 +1610,12 @@ export default function App() {
 
   const activeAgentBackend = launchOptions.agentBackend ?? codiffConfig.settings.agentBackend;
   const agentLabel = getAgentLabel(activeAgentBackend);
+  // Each AI task can run on its own agent, chosen in the Agent per Task menu.
+  const askAgentBackend = codiffConfig.settings.taskAgents.ask.agent || activeAgentBackend;
+  const reviewAgentBackend = codiffConfig.settings.taskAgents.review.agent || activeAgentBackend;
+  const walkthroughAgentLabel = getAgentLabel(
+    codiffConfig.settings.taskAgents.walkthrough.agent || activeAgentBackend,
+  );
   const agentSkillLabel = `${agentLabel} Skill`;
 
   if (launchOptions.planFile) {
@@ -1721,8 +1727,8 @@ export default function App() {
   // render paths can't drift apart.
   const commonReviewProps = {
     activeSearchMatch: activeDiffSearchMatch,
-    agentId: activeAgentBackend,
-    agentLabel,
+    agentId: askAgentBackend,
+    agentLabel: getAgentLabel(askAgentBackend),
     codeQualityFindings: state.codeQualityFindings,
     collapsed,
     comments: visibleReviewComments,
@@ -1838,8 +1844,8 @@ export default function App() {
         actions={
           <>
             <AgentReviewButton
-              agentId={activeAgentBackend}
-              agentLabel={agentLabel}
+              agentId={reviewAgentBackend}
+              agentLabel={getAgentLabel(reviewAgentBackend)}
               disabled={isSwitchingSource || state.files.length === 0}
               onReview={reviewWithAgent}
               state={getAgentReviewState(getSourceKey(state.source))}
@@ -2026,7 +2032,7 @@ export default function App() {
           <div className="empty-state">
             <div className="empty-panel squircle">
               <AgentUnavailablePanel
-                agentLabel={agentLabel}
+                agentLabel={walkthroughAgentLabel}
                 onShowFiles={() => setSidebarMode('tree')}
                 reason={walkthroughError?.reason}
                 title={walkthroughError?.code === 'PI_NOT_FOUND' ? 'Pi CLI not found' : undefined}

@@ -2,6 +2,7 @@
 
 const { readFileSync } = require('node:fs');
 const { getAgent } = require('./agent.cjs');
+const { resolveTaskAgent } = require('./task-agents.cjs');
 const { readConfig, writeConfig } = require('./config.cjs');
 const { createCloudflareAccessClient } = require('./cloudflare-access.cjs');
 const {
@@ -253,20 +254,30 @@ const generateAndShareWalkthrough = async ({
   const walkthroughCache = createWalkthroughCache({
     getMaxAgeDays: () => config.settings.walkthroughCacheMaxAgeDays,
   });
-  let model = config.settings[agent.modelSettingKey];
+  // The session belongs to the launching agent; the Walkthrough task may run on another.
+  const resolved = resolveTaskAgent(config.settings, 'walkthrough', agent.id);
+  const walkthroughAgent = resolved.agent;
+  let model = resolved.model;
   const customPrompt = config.settings.walkthroughPrompt;
-  const cachedWalkthrough = walkthroughCache.read(state, agent, model, { context, customPrompt });
+  const cachedWalkthrough = walkthroughCache.read(state, walkthroughAgent, model, {
+    context,
+    customPrompt,
+  });
   const result = cachedWalkthrough
     ? { status: 'ready', walkthrough: cachedWalkthrough }
     : await readNarrativeWalkthrough(
         state,
-        agent,
+        walkthroughAgent,
         {
-          fallbackModel: agent.fallbackModel,
+          fallbackModel: walkthroughAgent.fallbackModel,
           model,
           onModelFallback: async (fallbackModel) => {
             model = fallbackModel;
-            config.settings[agent.modelSettingKey] = fallbackModel;
+            if (resolved.overridesModel) {
+              config.settings.taskAgents.walkthrough.model = fallbackModel;
+            } else {
+              config.settings[walkthroughAgent.modelSettingKey] = fallbackModel;
+            }
             writeConfig(config);
           },
         },
@@ -275,10 +286,10 @@ const generateAndShareWalkthrough = async ({
       );
 
   if (result.status !== 'ready') {
-    throw new Error(result.reason || `${agent.label} could not generate a walkthrough.`);
+    throw new Error(result.reason || `${walkthroughAgent.label} could not generate a walkthrough.`);
   }
   if (!cachedWalkthrough) {
-    walkthroughCache.write(state, agent, model, result.walkthrough, { customPrompt });
+    walkthroughCache.write(state, walkthroughAgent, model, result.walkthrough, { customPrompt });
   }
 
   return uploadWalkthrough({
