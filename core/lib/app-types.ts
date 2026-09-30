@@ -34,6 +34,13 @@ type MarkdownPreviewAnnotationMetadata = {
   type: 'markdown-preview';
 };
 
+type GraphvizPreviewAnnotationMetadata = {
+  after: string | null;
+  before: string | null;
+  sectionId: string;
+  type: 'graphviz-preview';
+};
+
 type ImagePreviewAnnotationMetadata = {
   path: string;
   sectionId: string;
@@ -47,6 +54,7 @@ type WalkthroughHeaderAnnotationMetadata = {
 
 export type ReviewAnnotationMetadata =
   | CodeQualityAnnotationMetadata
+  | GraphvizPreviewAnnotationMetadata
   | ImagePreviewAnnotationMetadata
   | MarkdownPreviewAnnotationMetadata
   | ReviewCommentAnnotationMetadata
@@ -179,10 +187,12 @@ export type RepositoryLoadError = {
 export type CodeViewItemMetadata = {
   blockId: string;
   canEditMarkdown: boolean;
+  canRenderGraph: boolean;
   canRenderMarkdown: boolean;
   comments: ReadonlyArray<ReviewComment>;
   file: ChangedFile;
   isCollapsed: boolean;
+  isGraphPreview: boolean;
   isMarkdownPreview: boolean;
   isSelected: boolean;
   isViewed: boolean;

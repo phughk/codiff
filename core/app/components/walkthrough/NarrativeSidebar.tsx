@@ -1,3 +1,5 @@
+import { ArrowCounterClockwiseIcon as ArrowCounterClockwise } from '@phosphor-icons/react/ArrowCounterClockwise';
+import { ArrowsClockwiseIcon as ArrowsClockwise } from '@phosphor-icons/react/ArrowsClockwise';
 import { CheckIcon as Check } from '@phosphor-icons/react/Check';
 import { GitBranchIcon as GitBranch } from '@phosphor-icons/react/GitBranch';
 import { PathIcon as Path } from '@phosphor-icons/react/Path';
@@ -214,6 +216,7 @@ export function NarrativeSidebar({
   allowCommit = true,
   files,
   navigation,
+  onRegenerateWalkthrough,
   onShareWalkthrough,
   shareWalkthroughDisabled = false,
   showWhitespace,
@@ -222,6 +225,7 @@ export function NarrativeSidebar({
   allowCommit?: boolean;
   files: ReadonlyArray<ChangedFile>;
   navigation: NarrativeNavigation;
+  onRegenerateWalkthrough?: () => void;
   onShareWalkthrough?: () => void;
   shareWalkthroughDisabled?: boolean;
   showWhitespace: boolean;
@@ -246,7 +250,31 @@ export function NarrativeSidebar({
   return (
     <div className="walkthrough-list">
       <div className="wt-focus">
-        <span className="wt-focus-label">Review focus</span>
+        <div className="wt-focus-head">
+          <span className="wt-focus-label">Review focus</span>
+          <span className="wt-focus-actions">
+            <button
+              aria-label="Restart walkthrough"
+              className="wt-focus-action"
+              onClick={() => navigation.rewindToStop(0)}
+              title="Restart walkthrough: go back to the first stop and mark every stop unreviewed"
+              type="button"
+            >
+              <ArrowCounterClockwise aria-hidden size={13} weight="bold" />
+            </button>
+            {onRegenerateWalkthrough ? (
+              <button
+                aria-label="Regenerate walkthrough"
+                className="wt-focus-action"
+                onClick={onRegenerateWalkthrough}
+                title="Regenerate walkthrough: ask the agent to write a fresh walkthrough"
+                type="button"
+              >
+                <ArrowsClockwise aria-hidden size={13} weight="bold" />
+              </button>
+            ) : null}
+          </span>
+        </div>
         <p>{renderInlineMarkdown(walkthrough.focus)}</p>
       </div>
 

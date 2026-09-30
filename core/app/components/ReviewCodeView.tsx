@@ -70,10 +70,12 @@ import {
   statusLabel,
   workerHighlighterOptions,
 } from '../../lib/code-view-options.ts';
+import { applyDescriptionImages, useDescriptionImages } from '../../lib/description-images.ts';
 import {
   canRenderImagePreview,
   getDiffLineCountFromVisibleSections,
   getItemId,
+  getGraphvizPreviewContents,
   getMarkdownPreviewContents,
   getSectionForFileDiff,
   getVisibleDiffSections,
@@ -128,6 +130,7 @@ import { agentIconUrl } from './agentIcon.ts';
 import { Avatar } from './Avatar.tsx';
 import { Button } from './Button.tsx';
 import { DefinitionPopover } from './DefinitionPopover.tsx';
+import { GraphvizDiffPreview } from './GraphvizDiffPreview.tsx';
 import {
   RepositoryMarkdownEditor,
   type MarkdownDocumentEditorHandle,
@@ -216,6 +219,7 @@ function CodeViewHeader({
   onLoadSection,
   onOpenFile,
   onToggleCollapsed,
+  onToggleGraphPreview,
   onToggleMarkdownPreview,
   onToggleViewed,
   readOnly,
@@ -228,14 +232,17 @@ function CodeViewHeader({
   onLoadSection: (file: ChangedFile, section: DiffSection) => void;
   onOpenFile?: (file: ChangedFile) => void;
   onToggleCollapsed: (file: ChangedFile, isCollapsed: boolean, reviewKey: string) => void;
+  onToggleGraphPreview: (section: DiffSection) => void;
   onToggleMarkdownPreview: (file: ChangedFile, section: DiffSection) => void;
   onToggleViewed: (file: ChangedFile, isViewed: boolean, reviewIdentity: ReviewIdentity) => void;
   readOnly: boolean;
 }) {
   const {
+    canRenderGraph,
     canRenderMarkdown,
     file,
     isCollapsed,
+    isGraphPreview,
     isMarkdownPreview,
     isSelected,
     isViewed,
@@ -320,6 +327,17 @@ function CodeViewHeader({
           type="button"
         >
           {isMarkdownPreview ? 'View as Diff' : 'View as Markdown'}
+        </Button>
+      ) : null}
+      {canRenderGraph ? (
+        <Button
+          aria-pressed={isGraphPreview}
+          className={`codiff-markdown-button codiff-graph-button${isGraphPreview ? ' active' : ''}`}
+          onClick={() => onToggleGraphPreview(section)}
+          title={isGraphPreview ? 'View as Diff' : 'Render the graph before and after'}
+          type="button"
+        >
+          {isGraphPreview ? 'View as Diff' : 'View as Graph'}
         </Button>
       ) : null}
       {canLoadSection && !readOnly ? (
@@ -784,6 +802,11 @@ function SourceDescriptionBody({
     () => sanitizeMarkdownImages(stripHtmlComments(displayedDescription)),
     [displayedDescription],
   );
+  const descriptionImages = useDescriptionImages();
+  const renderedDescription = useMemo(
+    () => applyDescriptionImages(sanitizedDescription, descriptionImages),
+    [descriptionImages, sanitizedDescription],
+  );
   const descriptionEditorPlugins = useMemo(
     () =>
       onUploadDescriptionAsset
@@ -986,7 +1009,7 @@ function SourceDescriptionBody({
               className="codiff-markdown-preview-editor source-description-markdown-editor"
               density="compact"
               onHeightChange={() => onLayoutReady(layoutKey)}
-              value={sanitizedDescription}
+              value={renderedDescription}
               variant="embedded"
             />
           </div>
@@ -2902,6 +2925,9 @@ export function ReviewCodeView({
   const [markdownPreviewLayoutPassBySection, setMarkdownPreviewLayoutPassBySection] = useState<
     Readonly<Record<string, number>>
   >({});
+  const [graphPreviewSections, setGraphPreviewSections] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [imagePreviewLayoutPassBySection, setImagePreviewLayoutPassBySection] = useState<
     Readonly<Record<string, number>>
   >({});
@@ -3098,6 +3124,9 @@ export function ReviewCodeView({
         searchTargets.push({ fileDiff, itemId: id, path: file.path });
         nextSearchTargetsByBaseItemId.set(baseItemId, searchTargets);
         const markdownPreview = getMarkdownPreviewContents(file, section, fileDiff);
+        const graphPreview = getGraphvizPreviewContents(file, section, fileDiff);
+        const canRenderGraph = graphPreview != null;
+        const isGraphPreview = canRenderGraph && graphPreviewSections.has(section.id);
         const canRenderImage =
           !isReadOnly && onLoadImageContent != null && canRenderImagePreview(file.path, section);
         const canRenderMarkdown = markdownPreview != null;
@@ -3189,10 +3218,12 @@ export function ReviewCodeView({
         nextItemMetadata.set(id, {
           blockId: block.id,
           canEditMarkdown,
+          canRenderGraph,
           canRenderMarkdown,
           comments: sectionComments,
           file,
           isCollapsed,
+          isGraphPreview,
           isMarkdownPreview,
           isSelected,
           isViewed,
@@ -3223,6 +3254,39 @@ export function ReviewCodeView({
             type: 'file',
             version: getItemVersion(
               `${reviewVersionPrefix}:image:${sectionStateVersionKey}:${
+                imagePreviewLayoutPassBySection[section.id] ?? 0
+              }`,
+            ),
+          });
+          continue;
+        }
+        if (isGraphPreview) {
+          const graphLayoutKey = `${section.id}:${graphPreview.before?.length ?? -1}:${
+            graphPreview.after?.length ?? -1
+          }`;
+          nextItems.push({
+            annotations: getAnnotations(
+              id,
+              JSON.stringify([graphPreview.before, graphPreview.after, fileCommentAnnotations]),
+              [
+                ...fileCommentAnnotations,
+                {
+                  lineNumber: 1,
+                  metadata: {
+                    after: graphPreview.after,
+                    before: graphPreview.before,
+                    sectionId: section.id,
+                    type: 'graphviz-preview',
+                  },
+                } satisfies LineAnnotation<ReviewAnnotationMetadata>,
+              ],
+            ),
+            collapsed: isCollapsed,
+            file: getPlaceholderFile(file.path),
+            id,
+            type: 'file',
+            version: getItemVersion(
+              `${reviewVersionPrefix}:graph:${sectionStateVersionKey}:${graphLayoutKey}:${
                 imagePreviewLayoutPassBySection[section.id] ?? 0
               }`,
             ),
@@ -3311,6 +3375,7 @@ export function ReviewCodeView({
     forceExpandedPaths,
     getAnnotations,
     getPlaceholderFile,
+    graphPreviewSections,
     imagePreviewLayoutPassBySection,
     isReadOnly,
     itemVersionByKey,
@@ -3517,6 +3582,13 @@ export function ReviewCodeView({
       }
       if (meta.isMarkdownPreview) {
         setMarkdownPreviewSections((current) => {
+          const next = new Set(current);
+          next.delete(meta.section.id);
+          return next;
+        });
+      }
+      if (meta.isGraphPreview) {
+        setGraphPreviewSections((current) => {
           const next = new Set(current);
           next.delete(meta.section.id);
           return next;
@@ -3746,6 +3818,7 @@ export function ReviewCodeView({
             'codiff-markdown-preview-item',
             metadata?.isMarkdownPreview === true,
           );
+          node.classList.toggle('codiff-graph-preview-item', metadata?.isGraphPreview === true);
           node.classList.toggle(
             'codiff-image-preview-item',
             context.item.type === 'file' &&
@@ -3919,6 +3992,22 @@ export function ReviewCodeView({
       });
     },
     [clearCommentLineHighlight, markdownPreviewSections, onRefreshMarkdown, source.type],
+  );
+
+  const toggleGraphPreview = useCallback(
+    (section: DiffSection) => {
+      clearCommentLineHighlight();
+      setGraphPreviewSections((current) => {
+        const next = new Set(current);
+        if (next.has(section.id)) {
+          next.delete(section.id);
+        } else {
+          next.add(section.id);
+        }
+        return next;
+      });
+    },
+    [clearCommentLineHighlight],
   );
 
   const workerPoolOptions = useMemo(
@@ -4495,6 +4584,7 @@ export function ReviewCodeView({
           onLoadSection={onLoadSection}
           onOpenFile={onOpenFile}
           onToggleCollapsed={onToggleCollapsed}
+          onToggleGraphPreview={toggleGraphPreview}
           onToggleMarkdownPreview={toggleMarkdownPreview}
           onToggleViewed={onToggleViewed}
           readOnly={isReadOnly}
@@ -4512,6 +4602,7 @@ export function ReviewCodeView({
       onOpenFile,
       onToggleCollapsed,
       onToggleViewed,
+      toggleGraphPreview,
       toggleMarkdownPreview,
     ],
   );
@@ -4534,6 +4625,17 @@ export function ReviewCodeView({
             source={source}
           />
         ) : null;
+      }
+
+      if (annotation.metadata.type === 'graphviz-preview') {
+        return (
+          <GraphvizDiffPreview
+            after={annotation.metadata.after}
+            before={annotation.metadata.before}
+            onLayoutReady={markImagePreviewLayoutReady}
+            sectionId={annotation.metadata.sectionId}
+          />
+        );
       }
 
       if (annotation.metadata.type === 'markdown-preview') {

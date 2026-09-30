@@ -20,6 +20,8 @@ type UseAppCommandsOptions = {
   onOpenReviewSource: (kind: OpenReviewSourceKind) => void;
   onOpenSelectedFile: () => void;
   onRefreshRepository: () => void;
+  onRegenerateWalkthrough: () => void;
+  onRestartWalkthrough: () => void;
   onReviewWithAgent?: () => void;
   onToggleSidebar: () => void;
   onToggleViewed: (file: ChangedFile, isViewed: boolean, reviewIdentity: ReviewIdentity) => void;
@@ -39,6 +41,8 @@ export function useAppCommands({
   onOpenReviewSource,
   onOpenSelectedFile,
   onRefreshRepository,
+  onRegenerateWalkthrough,
+  onRestartWalkthrough,
   onReviewWithAgent,
   onToggleSidebar,
   onToggleViewed,
@@ -102,6 +106,18 @@ export function useAppCommands({
         execute: () => changeSidebarMode('walkthrough'),
         id: 'sidebar-walkthrough',
         title: 'Show Walkthrough',
+      }),
+      registry.register({
+        description: () => 'Go back to the first stop and mark every stop unreviewed',
+        execute: onRestartWalkthrough,
+        id: 'restart-walkthrough',
+        title: 'Restart Walkthrough',
+      }),
+      registry.register({
+        description: () => 'Ask the agent to write a fresh walkthrough',
+        execute: onRegenerateWalkthrough,
+        id: 'regenerate-walkthrough',
+        title: 'Regenerate Walkthrough',
       }),
       registry.register({
         execute: () => {
@@ -268,6 +284,8 @@ export function useAppCommands({
     onOpenReviewSource,
     onOpenSelectedFile,
     onRefreshRepository,
+    onRegenerateWalkthrough,
+    onRestartWalkthrough,
     onReviewWithAgent,
     onToggleSidebar,
     onToggleViewed,

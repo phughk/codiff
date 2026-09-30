@@ -573,6 +573,143 @@ test('the branch name renders in the top bar context', async () => {
   expect(branch?.parentElement?.className).toBe('review-top-bar-context');
 });
 
+test('pull request sources show the pull request link instead of the branch', async () => {
+  const source = {
+    number: 12,
+    provider: 'github',
+    title: 'Ship it',
+    type: 'pull-request',
+    url: 'https://github.com/nkzw-tech/codiff/pull/12',
+  } satisfies ReviewSource;
+  window.codiff = createCodiffMock({
+    getRepositoryState: vi.fn(async () => ({
+      ...repositoryState,
+      files: [createChangedFile('src/app.ts')],
+      source,
+    })),
+  });
+
+  await using app = await renderReact(<App />);
+  await waitFor(() =>
+    expect(app.container.querySelector('a.review-top-bar-source')).not.toBeNull(),
+  );
+
+  const link = app.container.querySelector<HTMLAnchorElement>('a.review-top-bar-source');
+  expect(link?.href).toBe(source.url);
+  expect(link?.getAttribute('title')).toBe(`Ship it\n${source.url}`);
+  expect(app.container.querySelector('.review-top-bar-branch')).toBeNull();
+});
+
+test('approving a pull request asks for confirmation and shows a toast once submitted', async () => {
+  const source = {
+    number: 12,
+    provider: 'github',
+    title: 'Ship it',
+    type: 'pull-request',
+    url: 'https://github.com/nkzw-tech/codiff/pull/12',
+  } satisfies ReviewSource;
+  const submitPullRequestReview = vi.fn(async () => {});
+  window.codiff = createCodiffMock({
+    getRepositoryState: vi.fn(
+      async () =>
+        ({
+          ...repositoryState,
+          files: [createChangedFile('src/app.ts')],
+          generalComments: [
+            {
+              canResolve: true,
+              comments: [{ author: { login: 'octocat' }, body: 'Resolved?', id: 'g1' }],
+              id: 'thread-1',
+            },
+          ],
+          reviewComments: [
+            {
+              author: { login: 'octocat' },
+              body: 'Open question',
+              filePath: 'src/app.ts',
+              id: 'github:1',
+              lineNumber: 1,
+              sectionId: 'src/app.ts:unstaged',
+              side: 'additions',
+            },
+          ],
+          source,
+        }) satisfies RepositoryState,
+    ),
+    submitPullRequestReview,
+  });
+
+  await using app = await renderReact(<App />);
+  await waitFor(() =>
+    expect(
+      app.container.querySelector<HTMLButtonElement>('button[aria-label="Approve review"]'),
+    ).not.toBeNull(),
+  );
+
+  await act(async () => {
+    app.container.querySelector<HTMLButtonElement>('button[aria-label="Approve review"]')?.click();
+  });
+
+  const dialog = app.container.querySelector<HTMLElement>('.review-submit-confirm-dialog');
+  expect(dialog?.textContent).toContain('Approve this pull request?');
+  expect(dialog?.querySelector('[data-kind="comments"]')?.textContent).toBe('0 comments to submit');
+  expect(dialog?.querySelector('[data-kind="unresolved"]')?.textContent).toBe(
+    '2 unresolved conversations still open',
+  );
+  expect(submitPullRequestReview).not.toHaveBeenCalled();
+
+  await act(async () => {
+    dialog?.querySelector<HTMLButtonElement>('button[type="submit"]')?.click();
+  });
+
+  await waitFor(() => expect(submitPullRequestReview).toHaveBeenCalledTimes(1));
+  await waitFor(() =>
+    expect(app.container.querySelector('.codiff-toast')?.textContent).toContain('Approved PR #12'),
+  );
+  expect(app.container.querySelector('.review-submit-confirm-dialog')).toBeNull();
+});
+
+test('cancelling the review confirmation does not submit the review', async () => {
+  const submitPullRequestReview = vi.fn(async () => {});
+  window.codiff = createCodiffMock({
+    getRepositoryState: vi.fn(async () => ({
+      ...repositoryState,
+      files: [createChangedFile('src/app.ts')],
+      source: {
+        number: 12,
+        provider: 'github',
+        title: 'Ship it',
+        type: 'pull-request',
+        url: 'https://github.com/nkzw-tech/codiff/pull/12',
+      } satisfies ReviewSource,
+    })),
+    submitPullRequestReview,
+  });
+
+  await using app = await renderReact(<App />);
+  await waitFor(() =>
+    expect(
+      app.container.querySelector<HTMLButtonElement>('button[aria-label="Approve review"]'),
+    ).not.toBeNull(),
+  );
+  await act(async () => {
+    app.container.querySelector<HTMLButtonElement>('button[aria-label="Approve review"]')?.click();
+  });
+  await act(async () => {
+    [
+      ...app.container.querySelectorAll<HTMLButtonElement>(
+        '.review-submit-confirm-dialog button[type="button"]',
+      ),
+    ]
+      .find((button) => button.textContent === 'Cancel')
+      ?.click();
+  });
+
+  expect(app.container.querySelector('.review-submit-confirm-dialog')).toBeNull();
+  expect(submitPullRequestReview).not.toHaveBeenCalled();
+  expect(app.container.querySelector('.codiff-toast')).toBeNull();
+});
+
 test('empty repository state fills the review pane for centered layout', async () => {
   window.codiff = createCodiffMock();
 

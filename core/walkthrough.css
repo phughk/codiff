@@ -8,6 +8,36 @@
   border-bottom: 1px solid var(--sidebar-border);
   padding: 0 8px 8px;
 }
+.wt-focus-head {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  min-height: 22px;
+}
+.wt-focus-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+.wt-focus-action {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 7px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 22px;
+  justify-content: center;
+  width: 22px;
+}
+.wt-focus-action:hover {
+  background: var(--hover-wash);
+  color: var(--text);
+}
+.wt-focus-action:focus-visible {
+  outline: 1px solid var(--tree-selection-focus);
+}
 .wt-focus-label {
   color: var(--text);
   font: 700 10px/1 var(--font-sans);

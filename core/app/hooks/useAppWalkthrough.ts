@@ -212,6 +212,20 @@ export function useAppWalkthrough({
     [loadNarrativeWalkthrough],
   );
 
+  // Discards the current walkthrough and asks the agent for a fresh one,
+  // skipping the cache.
+  const regenerateWalkthrough = useCallback(() => {
+    const currentState = stateRef.current;
+    if (!currentState || currentState.files.length === 0) {
+      return;
+    }
+    setMainMode('review');
+    setSidebarMode('walkthrough');
+    setWalkthroughUnread(false);
+    setNarrativeWalkthrough(null);
+    loadNarrativeWalkthrough(currentState.source, { force: true });
+  }, [loadNarrativeWalkthrough, stateRef]);
+
   const changeSidebarMode = useCallback(
     (mode: SidebarMode) => {
       setMainMode('review');
@@ -346,6 +360,7 @@ export function useAppWalkthrough({
     openCommitView,
     plainCommitModel,
     refreshWalkthroughForState,
+    regenerateWalkthrough,
     setMainMode,
     setNarrativeWalkthrough,
     setShareWalkthroughEnabled,

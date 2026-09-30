@@ -26,8 +26,10 @@ import { PlanEditorView } from './app/components/PlanEditorView.tsx';
 import { ReviewCodeView, type ReviewDiffBlock } from './app/components/ReviewCodeView.tsx';
 import type { ReviewModeItem } from './app/components/ReviewModeControl.tsx';
 import { ReviewPromptDialog } from './app/components/ReviewPromptDialog.tsx';
+import { ReviewSubmitConfirmDialog } from './app/components/ReviewSubmitConfirmDialog.tsx';
 import { ReviewTopBar } from './app/components/ReviewTopBar.tsx';
 import { Sidebar } from './app/components/Sidebar.tsx';
+import { Toast, type ToastMessage } from './app/components/Toast.tsx';
 import { CommitView } from './app/components/walkthrough/CommitView.tsx';
 import {
   NarrativeWalkthroughView,
@@ -68,6 +70,7 @@ import {
   type SourceSession,
   type WalkthroughNote,
 } from './lib/app-types.ts';
+import { DescriptionImagesContext } from './lib/description-images.ts';
 import {
   isPatchOnlyDiffSection,
   shouldLoadDiffSectionContents,
@@ -123,6 +126,7 @@ import type {
   GitIdentity,
   HistoryEntry,
   OpenReviewSourceKind,
+  PullRequestReviewEvent,
   RepositoryState,
   ReviewSource,
   TerminalHelperStatus,
@@ -132,6 +136,20 @@ import type {
 const emptyReviewComments: ReadonlyArray<ReviewComment> = [];
 const emptyWalkthroughNotes = new Map<string, WalkthroughNote>();
 const disableCodeViewWorkerPool = process.env.NODE_ENV === 'test';
+
+const emptyDescriptionImages: Readonly<Record<string, string>> = {};
+
+const getReviewSubmittedMessage = (
+  event: PullRequestReviewEvent,
+  source: Extract<ReviewSource, { type: 'pull-request' }>,
+) => {
+  const label = getSourceLabel({ ...source, sinceRef: undefined });
+  return event === 'APPROVE'
+    ? `Approved ${label}`
+    : event === 'COMMENT'
+      ? `Review submitted on ${label}`
+      : `Requested changes on ${label}`;
+};
 
 const getFailedSectionLoadState = (section: DiffSection): DiffSection =>
   isPatchOnlyDiffSection(section)
@@ -274,6 +292,7 @@ export default function App() {
     focusCommentId,
     focusCommentRequest,
     getAgentReviewState,
+    getReviewSubmitSummary,
     hasPendingReviewComments,
     pullRequestReviewSubmitting,
     resetCommentFocus,
@@ -314,6 +333,7 @@ export default function App() {
     openCommitView,
     plainCommitModel,
     refreshWalkthroughForState,
+    regenerateWalkthrough,
     setMainMode,
     setNarrativeWalkthrough,
     setShareWalkthroughEnabled,
@@ -1317,6 +1337,54 @@ export default function App() {
     [openReviewPromptDialog],
   );
 
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const dismissToast = useCallback(() => setToast(null), []);
+  const showToast = useCallback((message: string, href?: string) => {
+    setToast((current) => ({ href, id: (current?.id ?? 0) + 1, message }));
+  }, []);
+
+  const [reviewSubmitConfirm, setReviewSubmitConfirm] = useState<{
+    body?: string;
+    event: PullRequestReviewEvent;
+    reject: (error: Error) => void;
+    resolve: () => void;
+    summary: ReturnType<typeof getReviewSubmitSummary>;
+  } | null>(null);
+  const confirmPullRequestReview = useCallback(
+    (event: PullRequestReviewEvent, body?: string) =>
+      new Promise<void>((resolve, reject) => {
+        setReviewSubmitConfirm({ body, event, reject, resolve, summary: getReviewSubmitSummary() });
+      }),
+    [getReviewSubmitSummary],
+  );
+  const cancelPullRequestReview = useCallback(() => {
+    setReviewSubmitConfirm((current) => {
+      current?.reject(new Error('Review submission cancelled.'));
+      return null;
+    });
+  }, []);
+  const submitConfirmedPullRequestReview = useCallback(async () => {
+    const request = reviewSubmitConfirm;
+    const source = stateRef.current?.source;
+    if (!request || source?.type !== 'pull-request') {
+      cancelPullRequestReview();
+      return;
+    }
+    try {
+      const submission = submitPullRequestReview(request.event, request.body);
+      if (!submission) {
+        throw new Error('This review cannot be submitted right now.');
+      }
+      await submission;
+      showToast(getReviewSubmittedMessage(request.event, source), source.url);
+      request.resolve();
+    } catch (error) {
+      request.reject(error instanceof Error ? error : new Error(String(error)));
+    } finally {
+      setReviewSubmitConfirm(null);
+    }
+  }, [cancelPullRequestReview, reviewSubmitConfirm, showToast, submitPullRequestReview]);
+
   const loadMoreHistory = useCallback(() => {
     if (historyLoading || !historyHasMore) {
       return;
@@ -1597,6 +1665,12 @@ export default function App() {
     [showOpenReviewSourceDialog],
   );
 
+  const { rewindToStop } = narrativeNavigation;
+  const restartWalkthrough = useCallback(() => {
+    changeSidebarMode('walkthrough');
+    rewindToStop(0);
+  }, [changeSidebarMode, rewindToStop]);
+
   const commandBarCommands = useAppCommands({
     changeSidebarMode,
     focusFileFilter,
@@ -1606,6 +1680,8 @@ export default function App() {
     onOpenReviewSource: showOpenReviewSourceDialog,
     onOpenSelectedFile: openSelectedFile,
     onRefreshRepository: refreshRepository,
+    onRegenerateWalkthrough: regenerateWalkthrough,
+    onRestartWalkthrough: restartWalkthrough,
     onReviewWithAgent: reviewWithAgent,
     onToggleSidebar: toggleSidebar,
     onToggleViewed: toggleViewed,
@@ -1841,7 +1917,7 @@ export default function App() {
       <PullRequestReviewButtons
         disabled={pullRequestReviewSubmitting != null}
         hasPendingComments={hasPendingReviewComments}
-        onSubmitReview={submitPullRequestReview}
+        onSubmitReview={confirmPullRequestReview}
         reviewStatus={state.source.type === 'pull-request' ? state.source.reviewStatus : undefined}
         showCommentReview={isGitHubPullRequest}
       />
@@ -1930,7 +2006,7 @@ export default function App() {
         }
         context={
           <>
-            {state.branch ? (
+            {state.branch && !pullRequestUrl ? (
               <span className="review-top-bar-branch" title={state.branch}>
                 {state.branch}
               </span>
@@ -1942,7 +2018,12 @@ export default function App() {
                   href={pullRequestUrl}
                   rel="noreferrer"
                   target="_blank"
-                  title={sinceConflictTitle ?? undefined}
+                  title={
+                    sinceConflictTitle ??
+                    (state.source.type === 'pull-request' && state.source.title
+                      ? `${state.source.title}\n${pullRequestUrl}`
+                      : pullRequestUrl)
+                  }
                 >
                   <span className="review-top-bar-source-label">
                     {sidebarSourceLabel}
@@ -2017,6 +2098,18 @@ export default function App() {
           onSave={(prompt) => window.codiff.setReviewPrompt(prompt)}
         />
       ) : null}
+      {reviewSubmitConfirm && state.source.type === 'pull-request' ? (
+        <ReviewSubmitConfirmDialog
+          body={reviewSubmitConfirm.body}
+          commentCount={reviewSubmitConfirm.summary.commentCount}
+          event={reviewSubmitConfirm.event}
+          onCancel={cancelPullRequestReview}
+          onConfirm={submitConfirmedPullRequestReview}
+          providerLabel={state.source.provider === 'gitlab' ? 'merge request' : 'pull request'}
+          unresolvedThreadCount={reviewSubmitConfirm.summary.unresolvedThreadCount}
+        />
+      ) : null}
+      <Toast onDismiss={dismissToast} toast={toast} />
       {openReviewSourceKind ? (
         <OpenReviewSourceDialog
           kind={openReviewSourceKind}
@@ -2054,6 +2147,7 @@ export default function App() {
           narrativeWalkthrough={narrativeWalkthrough}
           onActivatePath={activatePath}
           onLoadMoreHistory={loadMoreHistory}
+          onRegenerateWalkthrough={regenerateWalkthrough}
           onSearchQueryChange={
             sidebarMode === 'history' ? setHistorySearchQuery : setFileSearchQuery
           }
@@ -2085,77 +2179,79 @@ export default function App() {
       </aside>
       <div aria-hidden className="sidebar-resizer" onPointerDown={resizeSidebar} />
       <main className="review">
-        {isSwitchingSource ? (
-          <ReviewSourceLoading />
-        ) : showPlainCommitView ? (
-          <CommitView
-            branch={state.branch}
-            draft={narrativeNavigation}
-            model={plainCommitModel}
-            onCommit={commitWalkthrough}
-            onCommitOutput={subscribeToCommitOutput}
-            onUpdateMessage={updateWalkthroughCommitMessage}
-          />
-        ) : showNarrativeWalkthrough && narrativeWalkthrough ? (
-          <NarrativeWalkthroughView
-            files={state.files}
-            navigation={narrativeNavigation}
-            onActiveReviewTargetChange={updateActiveWalkthroughReviewTarget}
-            onCommit={commitWalkthrough}
-            onCommitOutput={subscribeToCommitOutput}
-            onShareWalkthrough={enabledShareWalkthrough}
-            onUpdateCommitMessage={updateWalkthroughCommitMessage}
-            renderDiffBlocks={renderWalkthroughDiffBlocks}
-            shareWalkthroughDisabled={walkthroughSharing}
-            showWhitespace={showWhitespace}
-            walkthrough={narrativeWalkthrough}
-          />
-        ) : showAgentUnavailablePanel ? (
-          <div className="empty-state">
-            <div className="empty-panel squircle">
-              <AgentUnavailablePanel
-                agentLabel={walkthroughAgentLabel}
-                onShowFiles={() => setSidebarMode('tree')}
-                reason={walkthroughError?.reason}
-                title={walkthroughError?.code === 'PI_NOT_FOUND' ? 'Pi CLI not found' : undefined}
-              />
+        <DescriptionImagesContext value={state.descriptionImages ?? emptyDescriptionImages}>
+          {isSwitchingSource ? (
+            <ReviewSourceLoading />
+          ) : showPlainCommitView ? (
+            <CommitView
+              branch={state.branch}
+              draft={narrativeNavigation}
+              model={plainCommitModel}
+              onCommit={commitWalkthrough}
+              onCommitOutput={subscribeToCommitOutput}
+              onUpdateMessage={updateWalkthroughCommitMessage}
+            />
+          ) : showNarrativeWalkthrough && narrativeWalkthrough ? (
+            <NarrativeWalkthroughView
+              files={state.files}
+              navigation={narrativeNavigation}
+              onActiveReviewTargetChange={updateActiveWalkthroughReviewTarget}
+              onCommit={commitWalkthrough}
+              onCommitOutput={subscribeToCommitOutput}
+              onShareWalkthrough={enabledShareWalkthrough}
+              onUpdateCommitMessage={updateWalkthroughCommitMessage}
+              renderDiffBlocks={renderWalkthroughDiffBlocks}
+              shareWalkthroughDisabled={walkthroughSharing}
+              showWhitespace={showWhitespace}
+              walkthrough={narrativeWalkthrough}
+            />
+          ) : showAgentUnavailablePanel ? (
+            <div className="empty-state">
+              <div className="empty-panel squircle">
+                <AgentUnavailablePanel
+                  agentLabel={walkthroughAgentLabel}
+                  onShowFiles={() => setSidebarMode('tree')}
+                  reason={walkthroughError?.reason}
+                  title={walkthroughError?.code === 'PI_NOT_FOUND' ? 'Pi CLI not found' : undefined}
+                />
+              </div>
             </div>
-          </div>
-        ) : state.files.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-panel squircle">
-              <strong>{getEmptySourceTitle(state.source)}</strong>
-              {emptySourceDetail.kind === 'code' ? (
-                <code className="walkthrough-inline-code" title={emptySourceDetail.title}>
-                  {emptySourceDetail.text}
-                </code>
-              ) : (
-                <span>{emptySourceDetail.text}</span>
-              )}
+          ) : state.files.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-panel squircle">
+                <strong>{getEmptySourceTitle(state.source)}</strong>
+                {emptySourceDetail.kind === 'code' ? (
+                  <code className="walkthrough-inline-code" title={emptySourceDetail.title}>
+                    {emptySourceDetail.text}
+                  </code>
+                ) : (
+                  <span>{emptySourceDetail.text}</span>
+                )}
+              </div>
             </div>
-          </div>
-        ) : visibleFiles.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-panel squircle">
-              <strong>{hasDiffSearchQuery ? 'No matches in diffs' : 'No matching files'}</strong>
-              <span>
-                {diffSearchQuery ||
-                  fileSearchQuery ||
-                  (showWhitespace ? state.root : 'Whitespace-only changes hidden')}
-              </span>
+          ) : visibleFiles.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-panel squircle">
+                <strong>{hasDiffSearchQuery ? 'No matches in diffs' : 'No matching files'}</strong>
+                <span>
+                  {diffSearchQuery ||
+                    fileSearchQuery ||
+                    (showWhitespace ? state.root : 'Whitespace-only changes hidden')}
+                </span>
+              </div>
             </div>
-          </div>
-        ) : (
-          <ReviewCodeView
-            {...commonReviewProps}
-            files={visibleFiles}
-            forceExpandedPaths={diffSearchMatchPathSet}
-            scrollTarget={scrollTarget}
-            selectedPath={visibleSelectedPath}
-            showScrollProgress
-            walkthroughNotes={emptyWalkthroughNotes}
-          />
-        )}
+          ) : (
+            <ReviewCodeView
+              {...commonReviewProps}
+              files={visibleFiles}
+              forceExpandedPaths={diffSearchMatchPathSet}
+              scrollTarget={scrollTarget}
+              selectedPath={visibleSelectedPath}
+              showScrollProgress
+              walkthroughNotes={emptyWalkthroughNotes}
+            />
+          )}
+        </DescriptionImagesContext>
       </main>
     </div>
   );

@@ -134,21 +134,26 @@ export const codeViewUnsafeCSS = `
     pointer-events: none;
   }
 
-  :host(.codiff-image-preview-item) [data-file] {
+  :host(.codiff-image-preview-item) [data-file],
+  :host(.codiff-graph-preview-item) [data-file] {
     --diffs-code-grid: 1fr;
   }
 
-  :host(.codiff-image-preview-item) [data-file] [data-code] {
+  :host(.codiff-image-preview-item) [data-file] [data-code],
+  :host(.codiff-graph-preview-item) [data-file] [data-code] {
     grid-column: 1 / -1;
     padding-block: 0;
   }
 
-  :host(.codiff-image-preview-item) [data-file] [data-content] {
+  :host(.codiff-image-preview-item) [data-file] [data-content],
+  :host(.codiff-graph-preview-item) [data-file] [data-content] {
     grid-column: 1;
   }
 
   :host(.codiff-image-preview-item) [data-file] [data-gutter],
-  :host(.codiff-image-preview-item) [data-file] [data-line="1"][data-line-index="0"][data-line-type="context"] {
+  :host(.codiff-image-preview-item) [data-file] [data-line="1"][data-line-index="0"][data-line-type="context"],
+  :host(.codiff-graph-preview-item) [data-file] [data-gutter],
+  :host(.codiff-graph-preview-item) [data-file] [data-line="1"][data-line-index="0"][data-line-type="context"] {
     display: none;
     pointer-events: none;
   }

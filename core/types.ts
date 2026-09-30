@@ -249,6 +249,12 @@ export type RepositoryState = {
   branch: string | null;
   codeQualityFindings?: ReadonlyArray<PullRequestCodeQualityFinding>;
   commitMetadata?: CommitMetadata;
+  /**
+   * Images in the pull request description the renderer cannot load itself
+   * (attachments on private repositories), keyed by their URL in the
+   * description and resolved to data URLs for display.
+   */
+  descriptionImages?: Readonly<Record<string, string>>;
   files: ReadonlyArray<ChangedFile>;
   generalComments?: ReadonlyArray<PullRequestGeneralCommentThread>;
   generatedAt: number;

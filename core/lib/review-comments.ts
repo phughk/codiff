@@ -2,6 +2,7 @@ import type {
   ChangedFile,
   DiffSection,
   PullRequestExistingReviewComment,
+  PullRequestGeneralCommentThread,
   PullRequestReviewComment,
   RepositoryState,
 } from '../types.ts';
@@ -236,6 +237,39 @@ export const getPendingPullRequestReviewComments = (
       activeDraft?.id === comment.id ? { ...comment, body: activeDraft.body } : comment;
     return isPendingPullRequestReviewComment(candidate) ? [candidate] : [];
   });
+};
+
+/**
+ * What submitting a pull request review will publish, and how many existing
+ * conversations are still open, shown before the review is confirmed.
+ */
+export const getPullRequestReviewSummary = (
+  comments: ReadonlyArray<ReviewComment>,
+  activeDraft: Pick<ReviewComment, 'body' | 'id'> | null,
+  generalThreads: ReadonlyArray<PullRequestGeneralCommentThread> = [],
+) => {
+  const unresolvedThreads = new Set<string>();
+  for (const comment of comments) {
+    if (
+      comment.isReadOnly &&
+      !comment.isPending &&
+      !comment.isThreadResolved &&
+      !isAgentConversationComment(comment)
+    ) {
+      unresolvedThreads.add(comment.threadId ? `thread:${comment.threadId}` : comment.id);
+    }
+  }
+  for (const thread of generalThreads) {
+    if (thread.canResolve && !thread.isResolved) {
+      unresolvedThreads.add(`general:${thread.id}`);
+    }
+  }
+  return {
+    commentCount:
+      getPendingPullRequestReviewComments(comments, activeDraft).length +
+      comments.filter((comment) => comment.isPending).length,
+    unresolvedThreadCount: unresolvedThreads.size,
+  };
 };
 
 export const findReusableReviewCommentDraft = (

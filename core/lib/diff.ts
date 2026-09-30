@@ -12,6 +12,8 @@ export const getItemId = (section: DiffSection) => `diff:${section.id}`;
 
 export const isMarkdownFilePath = (path: string) => /\.md$/i.test(path);
 
+export const isGraphvizFilePath = (path: string) => /\.(?:dot|gv)$/i.test(path);
+
 const isImageFilePath = (path: string) => /\.(?:apng|avif|bmp|gif|ico|jpe?g|png|webp)$/i.test(path);
 
 export const canRenderImagePreview = (path: string, section: DiffSection) =>
@@ -150,6 +152,41 @@ export const getMarkdownPreviewContents = (
         contents: joinDiffLines(fileDiff.additionLines),
       }
     : null;
+};
+
+export type GraphvizPreviewContents = {
+  after: string | null;
+  before: string | null;
+};
+
+/**
+ * The full DOT source before and after the change, or `null` when either side
+ * is only known from the patch and its contents have not been loaded yet.
+ */
+export const getGraphvizPreviewContents = (
+  file: ChangedFile,
+  section: DiffSection,
+  fileDiff: FileDiffMetadata,
+): GraphvizPreviewContents | null => {
+  if (!isGraphvizFilePath(file.path) || section.binary || section.loadState !== 'ready') {
+    return null;
+  }
+
+  const loaded = getLoadedSectionContents(file, section);
+  const isAdded = file.status === 'added' || file.status === 'untracked';
+  const isDeleted = file.status === 'deleted';
+  const before = isAdded
+    ? null
+    : (section.oldFile?.contents ??
+      loaded?.oldFile?.contents ??
+      (isDeleted ? joinDiffLines(fileDiff.deletionLines) : undefined));
+  const after = isDeleted
+    ? null
+    : (section.newFile?.contents ??
+      loaded?.newFile?.contents ??
+      (isAdded ? joinDiffLines(fileDiff.additionLines) : undefined));
+
+  return before === undefined || after === undefined ? null : { after, before };
 };
 
 const emptyDiffLineCount: DiffLineCount = {

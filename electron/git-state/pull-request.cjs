@@ -30,7 +30,7 @@ const { parseReviewUrl } = require('../review-source.cjs');
  * @typedef {import('../../core/types.ts').SubmitPullRequestReviewRequest} SubmitPullRequestReviewRequest
  * @typedef {{owner: string; repo: string}} GitHubRepositoryReference
  * @typedef {{name: string; url: string}} LocalGitRemote
- * @typedef {{full_name?: string; name?: string; owner?: {login?: string}}} GitHubRepositoryMetadata
+ * @typedef {{full_name?: string; name?: string; owner?: {login?: string}; private?: boolean}} GitHubRepositoryMetadata
  * @typedef {{number: number; owner: string; repo: string; url: string}} PullRequestReference
  * @typedef {{direction: 'fetch' | 'push'; name: string; owner: string; repo: string}} GitHubRemote
  * @typedef {{filename: string; patch?: string; previous_filename?: string; status: string}} GitHubPullRequestFile
@@ -345,6 +345,121 @@ const readPullRequestMetadata = async (repoRoot, pullRequest) =>
       `repos/${pullRequest.owner}/${pullRequest.repo}/pulls/${pullRequest.number}`,
     ]),
   );
+
+const DESCRIPTION_IMAGE_LIMIT = 20;
+const DESCRIPTION_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const DESCRIPTION_IMAGE_TIMEOUT_MS = 15_000;
+const GITHUB_ASSET_ID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const MARKDOWN_IMAGE_SOURCE_PATTERN = /!\[[^\]\n]*\]\(([^)\s]+)/g;
+const HTML_IMAGE_SOURCE_PATTERN = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+
+/** @param {string} value */
+const decodeHtmlAttribute = (value) =>
+  value
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&amp;', '&');
+
+/** @param {string} markdown @returns {Array<string>} */
+const collectMarkdownImageSources = (markdown) => [
+  ...new Set([
+    ...[...markdown.matchAll(MARKDOWN_IMAGE_SOURCE_PATTERN)].map((match) => match[1]),
+    ...[...markdown.matchAll(HTML_IMAGE_SOURCE_PATTERN)].map((match) => match[1] ?? match[2]),
+  ]),
+];
+
+/**
+ * Attachments uploaded to GitHub live behind `github.com/user-attachments`
+ * (or the older `github.com/<owner>/<repo>/assets`), which only load for a
+ * signed-in browser session on private repositories.
+ *
+ * @param {string} source
+ */
+const isGitHubAttachmentSource = (source) => {
+  try {
+    const url = new URL(source);
+    return (
+      url.hostname === 'github.com' &&
+      /\/assets\//.test(url.pathname) &&
+      GITHUB_ASSET_ID_PATTERN.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+};
+
+/** @param {string} url @returns {Promise<string | null>} */
+const downloadImageAsDataUrl = async (url) => {
+  const response = await fetch(url, { signal: AbortSignal.timeout(DESCRIPTION_IMAGE_TIMEOUT_MS) });
+  const contentType = response.headers.get('content-type')?.split(';')[0]?.trim() ?? '';
+  if (!response.ok || !contentType.startsWith('image/')) {
+    return null;
+  }
+  const length = Number(response.headers.get('content-length'));
+  if (length > DESCRIPTION_IMAGE_MAX_BYTES) {
+    return null;
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  return bytes.length > DESCRIPTION_IMAGE_MAX_BYTES
+    ? null
+    : `data:${contentType};base64,${bytes.toString('base64')}`;
+};
+
+/**
+ * Resolves attachment images in a private pull request's description to data
+ * URLs. GitHub's rendered description signs each attachment URL for a few
+ * minutes, so the images are downloaded right away instead of handing the
+ * expiring URLs to the renderer.
+ *
+ * @param {string} repoRoot
+ * @param {PullRequestReference} pullRequest
+ * @param {GitHubPullRequestMetadata} metadata
+ * @returns {Promise<Record<string, string> | undefined>}
+ */
+const readPullRequestDescriptionImages = async (repoRoot, pullRequest, metadata) => {
+  const body = metadata.body ?? '';
+  if (!body || metadata.base?.repo?.private === false) {
+    return undefined;
+  }
+  const sources = collectMarkdownImageSources(body)
+    .filter(isGitHubAttachmentSource)
+    .slice(0, DESCRIPTION_IMAGE_LIMIT);
+  if (sources.length === 0) {
+    return undefined;
+  }
+  try {
+    /** @type {{body_html?: string}} */
+    const rendered = JSON.parse(
+      await ghApi(repoRoot, [
+        '-H',
+        'Accept: application/vnd.github.html+json',
+        `repos/${pullRequest.owner}/${pullRequest.repo}/pulls/${pullRequest.number}`,
+      ]),
+    );
+    const signedSources = [...(rendered.body_html ?? '').matchAll(HTML_IMAGE_SOURCE_PATTERN)].map(
+      (match) => decodeHtmlAttribute(match[1] ?? match[2] ?? ''),
+    );
+    const entries = await Promise.all(
+      sources.map(async (source) => {
+        const assetId = GITHUB_ASSET_ID_PATTERN.exec(source)?.[0]?.toLowerCase();
+        const signedSource = assetId
+          ? signedSources.find((candidate) => candidate.toLowerCase().includes(assetId))
+          : undefined;
+        if (!signedSource) {
+          return null;
+        }
+        const dataUrl = await downloadImageAsDataUrl(signedSource).catch(() => null);
+        return dataUrl ? /** @type {const} */ ([source, dataUrl]) : null;
+      }),
+    );
+    const images = Object.fromEntries(entries.filter((entry) => entry != null));
+    return Object.keys(images).length > 0 ? images : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 /** @param {string} repoRoot @param {PullRequestReference} pullRequest @returns {Promise<Array<GitHubPullRequestFile>>} */
 const readPullRequestFiles = async (repoRoot, pullRequest) => {
@@ -1092,6 +1207,7 @@ const readPullRequestState = async (launchPath, source) => {
       readPullRequestMetadata(repoRoot, pullRequest),
       readPullRequestComments(repoRoot, pullRequest),
     ]);
+    const descriptionImages = readPullRequestDescriptionImages(repoRoot, pullRequest, metadata);
     const remote = await selectPullRequestRemote(repoRoot, pullRequest, metadata.head?.sha);
     const since = await readPullRequestFilesSince(
       repoRoot,
@@ -1101,7 +1217,9 @@ const readPullRequestState = async (launchPath, source) => {
       source.sinceRef,
     );
     const pathSet = new Set(since.files.map((file) => file.path));
+    const resolvedDescriptionImages = await descriptionImages;
     return {
+      ...(resolvedDescriptionImages ? { descriptionImages: resolvedDescriptionImages } : {}),
       files: since.files,
       generatedAt: Date.now(),
       launchPath,
@@ -1122,6 +1240,7 @@ const readPullRequestState = async (launchPath, source) => {
     readPullRequestDiff(repoRoot, pullRequest),
     readPullRequestComments(repoRoot, pullRequest),
   ]);
+  const descriptionImages = readPullRequestDescriptionImages(repoRoot, pullRequest, metadata);
   const remote = await selectPullRequestRemote(repoRoot, pullRequest, metadata.head?.sha);
   const diffByPath = splitPullRequestDiff(diff);
   // Load every file's base and head contents up front from the local refs, so
@@ -1188,8 +1307,10 @@ const readPullRequestState = async (launchPath, source) => {
       };
     })
     .sort((left, right) => left.path.localeCompare(right.path));
+  const resolvedDescriptionImages = await descriptionImages;
 
   return {
+    ...(resolvedDescriptionImages ? { descriptionImages: resolvedDescriptionImages } : {}),
     files,
     generatedAt: Date.now(),
     launchPath,
@@ -1533,6 +1654,7 @@ module.exports = {
   normalizePendingGitHubReviewComment,
   normalizePullRequestComment,
   parseGitHubPullRequestUrl,
+  readPullRequestDescriptionImages,
   readPullRequestImageContent,
   readPullRequestState,
   readTreeRebasedOnBase,

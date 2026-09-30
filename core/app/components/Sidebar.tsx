@@ -38,6 +38,7 @@ export function Sidebar({
   narrativeWalkthrough,
   onActivatePath,
   onLoadMoreHistory,
+  onRegenerateWalkthrough,
   onSearchQueryChange,
   onSelectSource,
   onShareWalkthrough,
@@ -67,6 +68,7 @@ export function Sidebar({
   narrativeWalkthrough: NarrativeWalkthrough | null;
   onActivatePath: (path: string) => void;
   onLoadMoreHistory: () => void;
+  onRegenerateWalkthrough?: () => void;
   onSearchQueryChange: (query: string) => void;
   onSelectSource: (source: ReviewSource) => void;
   onShareWalkthrough?: () => void;
@@ -143,6 +145,7 @@ export function Sidebar({
         <NarrativeSidebar
           files={commitFiles}
           navigation={narrativeNavigation}
+          onRegenerateWalkthrough={onRegenerateWalkthrough}
           onShareWalkthrough={onShareWalkthrough}
           shareWalkthroughDisabled={shareWalkthroughDisabled}
           showWhitespace={showWhitespace}
@@ -164,6 +167,11 @@ export function Sidebar({
             <div className="sidebar-walkthrough-status" title={walkthroughError.reason}>
               <strong>Walkthrough unavailable</strong>
               <span>{walkthroughError.reason}</span>
+              {onRegenerateWalkthrough ? (
+                <Button onClick={onRegenerateWalkthrough} size="sm" type="button">
+                  Try again
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </>

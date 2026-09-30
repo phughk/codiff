@@ -4858,3 +4858,173 @@ textarea.review-prompt-input {
     display: none;
   }
 }
+
+.review-submit-confirm-dialog {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.review-submit-confirm-summary {
+  display: grid;
+  font: 13px/1.45 var(--font-sans);
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.review-submit-confirm-summary li {
+  background: rgb(127 127 127 / 0.08);
+  border-radius: 12px;
+  corner-shape: squircle;
+  padding: 8px 12px;
+}
+
+.review-submit-confirm-summary li[data-warning] {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.review-submit-confirm-summary li[data-warning] strong {
+  color: var(--danger);
+}
+
+.codiff-toast {
+  align-items: center;
+  animation: codiff-toast-in 180ms ease-out;
+  backdrop-filter: blur(28px) saturate(1.4);
+  background: color-mix(in srgb, var(--code-bg) 92%, transparent);
+  border: 1px solid var(--file-border);
+  border-radius: 16px;
+  bottom: 20px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.16);
+  color: var(--text);
+  corner-shape: squircle;
+  display: flex;
+  font: 600 13px/1.35 var(--font-sans);
+  gap: 8px;
+  left: 50%;
+  max-width: calc(100vw - 32px);
+  padding: 10px 10px 10px 14px;
+  position: fixed;
+  transform: translateX(-50%);
+  z-index: 110;
+}
+
+.codiff-toast-icon {
+  color: var(--viewed);
+  flex: none;
+}
+
+a.codiff-toast-message {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.codiff-toast-message:hover {
+  text-decoration: underline;
+}
+
+.codiff-toast-dismiss {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 22px;
+  justify-content: center;
+  width: 22px;
+}
+
+.codiff-toast-dismiss:hover {
+  background: rgb(127 127 127 / 0.14);
+  color: var(--text);
+}
+
+@keyframes codiff-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
+
+.review-submit-confirm-button.approve {
+  color: var(--viewed);
+}
+
+.review-submit-confirm-button.request-changes {
+  color: var(--danger);
+}
+
+.codiff-graph-preview {
+  box-sizing: border-box;
+  color: var(--text);
+  display: grid;
+  font: 13px/1.4 var(--font-sans);
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  min-inline-size: 0;
+  padding: 16px;
+  white-space: normal;
+  width: 100%;
+}
+
+.codiff-graph-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+
+.codiff-graph-pane-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.codiff-graph-pane[data-side='before'] .codiff-graph-pane-label {
+  color: var(--diff-deletion);
+}
+
+.codiff-graph-pane[data-side='after'] .codiff-graph-pane-label {
+  color: var(--diff-addition);
+}
+
+/* Graphviz draws black on a transparent background, so graphs sit on a light card in both themes. */
+.codiff-graph-render {
+  background: #fff;
+  border: 1px solid var(--file-border);
+  border-radius: 12px;
+  corner-shape: squircle;
+  display: flex;
+  justify-content: center;
+  max-height: 720px;
+  overflow: auto;
+  padding: 12px;
+}
+
+.codiff-graph-render svg {
+  height: auto;
+  max-width: 100%;
+}
+
+.codiff-graph-empty,
+.codiff-graph-error {
+  align-items: center;
+  border: 1px dashed var(--file-border);
+  border-radius: 12px;
+  color: var(--muted);
+  corner-shape: squircle;
+  display: flex;
+  justify-content: center;
+  min-height: 120px;
+  padding: 16px;
+  text-align: center;
+}
+
+.codiff-graph-error {
+  color: var(--danger);
+  white-space: pre-wrap;
+}

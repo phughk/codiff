@@ -98,8 +98,9 @@ const splitDiffGitHeader = (line) => {
 const stripGitDiffPrefix = (path) =>
   path.startsWith('a/') || path.startsWith('b/') ? path.slice(2) : path;
 
+// Markdown and Graphviz files render previews from their full contents.
 /** @param {string} path */
-const shouldEagerlyReadWorkingTreeContents = (path) => /\.md$/i.test(path);
+const shouldEagerlyReadWorkingTreeContents = (path) => /\.(?:md|dot|gv)$/i.test(path);
 
 /** @param {string} rawPatch @returns {Map<string, {binary: boolean; patch: string}>} */
 const splitPatchByPath = (rawPatch) => {

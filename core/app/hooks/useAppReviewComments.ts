@@ -3,6 +3,7 @@ import type { CodiffAgentBackend } from '../../config/types.ts';
 import type { ReviewComment } from '../../lib/app-types.ts';
 import {
   getPendingPullRequestReviewComments,
+  getPullRequestReviewSummary,
   getReviewCommentRangeProps,
   isAgentConversationComment,
   toPullRequestReviewComment,
@@ -434,6 +435,16 @@ export function useAppReviewComments({
     ],
   );
 
+  const getReviewSubmitSummary = useCallback(
+    () =>
+      getPullRequestReviewSummary(
+        reviewCommentsRef.current,
+        activeReviewCommentDraftRef.current,
+        stateRef.current?.generalComments,
+      ),
+    [activeReviewCommentDraftRef, reviewCommentsRef, stateRef],
+  );
+
   const hasPendingReviewComments =
     reviewComments.some((comment) => comment.isPending) ||
     getPendingPullRequestReviewComments(reviewComments, activeReviewCommentDraftState).length > 0;
@@ -442,6 +453,7 @@ export function useAppReviewComments({
     ...commentDrafts,
     askCodex,
     getAgentReviewState,
+    getReviewSubmitSummary,
     hasPendingReviewComments,
     pullRequestReviewSubmitting,
     reviewComments,
