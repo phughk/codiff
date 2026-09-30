@@ -37,6 +37,7 @@
     --muted: rgb(17 17 17 / 0.48);
     --sidebar-bg: rgb(255 255 255 / 0.58);
     --sidebar-border: rgb(17 17 17 / 0.1);
+    --agent-conversation: #7c5cd6;
     --sidebar-ref: #c56e0e;
     --sidebar-text: rgb(17 17 17 / 0.76);
     --sidebar-vibrancy-tint: rgb(255 255 255 / 0.34);
@@ -66,6 +67,7 @@
       --muted: rgb(230 230 230 / 0.48);
       --sidebar-bg: rgb(38 38 38 / 0.58);
       --sidebar-border: rgb(230 230 230 / 0.1);
+      --agent-conversation: #a58cf0;
       --sidebar-ref: #eb9a3d;
       --sidebar-text: rgb(230 230 230 / 0.78);
       --sidebar-vibrancy-tint: rgb(255 255 255 / 0.06);
@@ -95,6 +97,7 @@
     --muted: rgb(17 17 17 / 0.48);
     --sidebar-bg: rgb(255 255 255 / 0.58);
     --sidebar-border: rgb(17 17 17 / 0.1);
+    --agent-conversation: #7c5cd6;
     --sidebar-ref: #c56e0e;
     --sidebar-text: rgb(17 17 17 / 0.76);
     --sidebar-vibrancy-tint: rgb(255 255 255 / 0.34);
@@ -123,6 +126,7 @@
     --muted: rgb(230 230 230 / 0.48);
     --sidebar-bg: rgb(38 38 38 / 0.58);
     --sidebar-border: rgb(230 230 230 / 0.1);
+    --agent-conversation: #a58cf0;
     --sidebar-ref: #eb9a3d;
     --sidebar-text: rgb(230 230 230 / 0.78);
     --sidebar-vibrancy-tint: rgb(255 255 255 / 0.06);
@@ -3505,6 +3509,37 @@ diffs-container .review-comment-thread {
   min-width: 0;
   overflow: hidden;
   overflow-wrap: anywhere;
+}
+
+.review-comment-item {
+  display: contents;
+}
+
+/* A note the reviewer asked the agent about stays a private conversation. */
+.review-comment-agent-conversation {
+  background: color-mix(in srgb, var(--agent-conversation) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--agent-conversation) 28%, transparent);
+  border-radius: 28px;
+  corner-shape: squircle;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px;
+}
+
+.review-comment-agent-conversation .review-comment-body {
+  border-color: color-mix(in srgb, var(--agent-conversation) 24%, var(--file-border));
+}
+
+.review-comment-header .review-comment-agent-conversation-label {
+  background: color-mix(in srgb, var(--agent-conversation) 15%, transparent);
+  border-radius: 14px;
+  color: var(--agent-conversation);
+  corner-shape: squircle;
+  flex: none;
+  font: 600 11px/1 var(--font-sans);
+  padding: 4px 7px;
 }
 
 .review-comment-body.codex {

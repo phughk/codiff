@@ -1,6 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 import type { ReviewComment } from '../lib/app-types.ts';
 import {
+  buildReviewCommentsMarkdown,
   findReusableReviewCommentDraft,
   getPendingPullRequestReviewComments,
   getRefreshedReviewComments,
@@ -134,6 +135,20 @@ test('getPendingPullRequestReviewComments includes an unflushed active draft', (
     ['draft', 'Still focused.'],
     ['ready', 'Already flushed.'],
   ]);
+});
+
+test('agent conversations stay out of the review and copied comments', () => {
+  const comments = [
+    createReviewComment({ body: 'Why this cache?', codexReply: { status: 'loading' }, id: 'ask' }),
+    createReviewComment({ body: 'Rename this.', id: 'note', lineNumber: 6 }),
+  ];
+
+  expect(getPendingPullRequestReviewComments(comments).map((comment) => comment.id)).toEqual([
+    'note',
+  ]);
+  const markdown = buildReviewCommentsMarkdown([], comments, false);
+  expect(markdown).toContain('Rename this.');
+  expect(markdown).not.toContain('Why this cache?');
 });
 
 test('getPendingPullRequestReviewComments replaces a stale flushed draft', () => {

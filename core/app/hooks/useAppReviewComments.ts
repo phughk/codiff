@@ -4,6 +4,7 @@ import type { ReviewComment } from '../../lib/app-types.ts';
 import {
   getPendingPullRequestReviewComments,
   getReviewCommentRangeProps,
+  isAgentConversationComment,
   toPullRequestReviewComment,
 } from '../../lib/review-comments.ts';
 import { getSourceKey } from '../../lib/source.ts';
@@ -294,6 +295,7 @@ export function useAppReviewComments({
       if (
         currentState?.source.type !== 'pull-request' ||
         !comment ||
+        isAgentConversationComment(comment) ||
         comment.body.trim().length === 0 ||
         comment.remoteSubmit?.status === 'submitting'
       ) {

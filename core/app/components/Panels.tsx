@@ -22,7 +22,7 @@ import {
 import { matchesShortcut } from '../../config/keymap.ts';
 import type { CodiffKeymap } from '../../config/types.ts';
 import type { RepositoryLoadError, ReviewComment } from '../../lib/app-types.ts';
-import { buildReviewCommentsMarkdown } from '../../lib/review-comments.ts';
+import { buildReviewCommentsMarkdown, isReviewDraftComment } from '../../lib/review-comments.ts';
 import type {
   ChangedFile,
   CodiffUpdateStatus,
@@ -502,9 +502,7 @@ export function CopyCommentsButton({
   showWhitespace: boolean;
 }) {
   const [copied, markCopied] = useCopiedState(2000);
-  const pendingCommentCount = comments.filter(
-    (comment) => !comment.isReadOnly && comment.body.trim(),
-  ).length;
+  const pendingCommentCount = comments.filter(isReviewDraftComment).length;
 
   const copyComments = useCallback(async () => {
     const markdown = buildReviewCommentsMarkdown(

@@ -212,8 +212,17 @@ export const mergeReviewComments = (
   return [...snapshotComments, ...localComments.filter((comment) => !snapshotIds.has(comment.id))];
 };
 
+// Asking the agent about a note turns it into a private conversation with the
+// agent for good, so it is never posted or copied as a review comment.
+export const isAgentConversationComment = (comment: Pick<ReviewComment, 'codexReply'>) =>
+  comment.codexReply != null;
+
+export const isReviewDraftComment = (comment: ReviewComment) =>
+  !comment.isReadOnly && !isAgentConversationComment(comment) && comment.body.trim().length > 0;
+
 const isPendingPullRequestReviewComment = (comment: ReviewComment) =>
   !comment.isReadOnly &&
+  !isAgentConversationComment(comment) &&
   !comment.threadId &&
   comment.remoteSubmit?.status !== 'submitting' &&
   comment.body.trim().length > 0;
@@ -397,7 +406,7 @@ export const buildReviewCommentsMarkdown = (
   showWhitespace: boolean,
   prefix?: string,
 ) => {
-  const pendingComments = comments.filter((comment) => !comment.isReadOnly && comment.body.trim());
+  const pendingComments = comments.filter(isReviewDraftComment);
   const filesByPath = new Map(files.map((file) => [file.path, file]));
   const orderedComments = pendingComments.sort((left, right) => {
     const leftFileIndex = files.findIndex((file) => file.path === left.filePath);

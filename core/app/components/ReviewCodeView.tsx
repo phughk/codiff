@@ -94,6 +94,7 @@ import {
   getReviewCommentLineLabel,
   getReviewCommentsDigest,
   hasActiveTextSelection,
+  isAgentConversationComment,
   isFileReviewComment,
   isInteractiveReviewEvent,
   isLineReviewComment,
@@ -404,6 +405,7 @@ const canAskCodexForComment = (comment: ReviewComment) =>
 
 const canSubmitComment = (comment: ReviewComment) =>
   !comment.isReadOnly &&
+  !isAgentConversationComment(comment) &&
   comment.body.trim().length > 0 &&
   comment.remoteSubmit?.status !== 'submitting';
 
@@ -1411,6 +1413,9 @@ function ReviewCommentEditor({
   const draftComment = withCommentBody(comment, draft);
   const canAskCodex = onAskCodex != null && canAskCodexForComment(draftComment);
   const commentCanSubmit = canSubmitComment(draftComment);
+  const isAgentConversation = isAgentConversationComment(comment);
+  const showSubmitActions =
+    supportsReviewCommentActions && !comment.isReadOnly && !isAgentConversation;
   const canEditExistingComment =
     supportsReviewCommentActions && comment.isReadOnly && comment.canEdit === true;
   const canSaveEdit =
@@ -1614,7 +1619,7 @@ function ReviewCommentEditor({
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (matchesShortcut(event, keymap, 'submitComment')) {
-        if (supportsReviewCommentActions) {
+        if (supportsReviewCommentActions && !isAgentConversation) {
           if (commentCanSubmit) {
             event.preventDefault();
             event.stopPropagation();
@@ -1662,13 +1667,16 @@ function ReviewCommentEditor({
       handleAddComment,
       handleAskCodex,
       handleSubmitComment,
+      isAgentConversation,
       keymap,
       onDeleteComment,
       supportsReviewCommentActions,
     ],
   );
   return (
-    <Fragment>
+    <div
+      className={isAgentConversation ? 'review-comment-agent-conversation' : 'review-comment-item'}
+    >
       <div className="review-comment">
         {comment.author ? (
           <ReviewAvatar author={comment.author} />
@@ -1689,6 +1697,14 @@ function ReviewCommentEditor({
             }${comment.isReadOnly ? ' read-only' : ''}`}
           >
             <strong>{displayName}</strong>
+            {isAgentConversation ? (
+              <span
+                className="review-comment-agent-conversation-label"
+                title={`A conversation with ${agentLabel}. It stays out of your review and copied comments.`}
+              >
+                {agentLabel}
+              </span>
+            ) : null}
             {comment.agentReview ? (
               <span
                 className={`review-comment-severity ${comment.agentReview.severity}`}
@@ -1788,7 +1804,7 @@ function ReviewCommentEditor({
                 Open
               </button>
             ) : null}
-            {supportsReviewCommentActions && !comment.isReadOnly ? (
+            {showSubmitActions ? (
               <button
                 className="review-comment-action"
                 disabled={!commentCanSubmit}
@@ -1807,7 +1823,7 @@ function ReviewCommentEditor({
                 {comment.remoteSubmit?.status === 'submitting' ? 'Sending' : 'Comment'}
               </button>
             ) : null}
-            {supportsReviewCommentActions && !comment.isReadOnly && onSubmitPendingComment ? (
+            {showSubmitActions && onSubmitPendingComment ? (
               <button
                 className="review-comment-action"
                 disabled={!commentCanSubmit}
@@ -1914,7 +1930,7 @@ function ReviewCommentEditor({
                 onChange={handleChange}
                 onFocus={handleFocus}
                 onKeyDown={handleKeyDown}
-                placeholder="Write a review comment…"
+                placeholder={isAgentConversation ? `Ask ${agentLabel}…` : 'Write a review comment…'}
                 ref={comment.id === focusCommentId ? focusEditorRef : undefined}
                 spellCheck
                 value={draft}
@@ -1965,7 +1981,7 @@ function ReviewCommentEditor({
           onSend={(question) => onAskCodex(comment.id, question)}
         />
       ) : null}
-    </Fragment>
+    </div>
   );
 }
 
