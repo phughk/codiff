@@ -7,8 +7,16 @@ import {
   extractFencedCodeBlocks,
   normalizeReadOnlyMarkdownValue,
   ReadOnlyMarkdownView,
+  splitMermaidBlocks,
 } from '../app/components/ReadOnlyMarkdownView.tsx';
 import { renderReact, waitFor } from './helpers/react.tsx';
+
+vi.mock('mermaid', () => ({
+  default: {
+    initialize: vi.fn(),
+    render: vi.fn(async () => ({ svg: '<svg class="rendered-mermaid"></svg>' })),
+  },
+}));
 
 test('normalizeReadOnlyMarkdownValue collapses repeated blank lines outside fenced code', () => {
   expect(normalizeReadOnlyMarkdownValue('# Title\n\nNew paragraph.\n')).toBe(
@@ -134,4 +142,49 @@ test('ReadOnlyMarkdownView does not render empty paragraph break blocks', async 
       ...view.container.querySelectorAll<HTMLElement>('[data-mdx-comment-block-type="paragraph"]'),
     ].some((paragraph) => !paragraph.textContent?.trim() && paragraph.querySelector('br')),
   ).toBe(false);
+});
+
+test('splitMermaidBlocks separates mermaid fences from the surrounding Markdown', () => {
+  expect(
+    splitMermaidBlocks(
+      'Intro.\n\n```mermaid\ngraph TD\n  A --> B\n```\n\n````md\n```mermaid\nnot a diagram\n```\n````',
+    ),
+  ).toEqual([
+    { type: 'markdown', value: 'Intro.\n' },
+    {
+      code: 'graph TD\n  A --> B',
+      source: '```mermaid\ngraph TD\n  A --> B\n```',
+      type: 'mermaid',
+    },
+    { type: 'markdown', value: '\n````md\n```mermaid\nnot a diagram\n```\n````' },
+  ]);
+  expect(splitMermaidBlocks('```mermaid\ngraph TD\n')).toEqual([
+    { type: 'markdown', value: '```mermaid\ngraph TD\n' },
+  ]);
+});
+
+test('ReadOnlyMarkdownView renders mermaid diagrams and toggles to source', async () => {
+  await using view = await renderReact(
+    <ReadOnlyMarkdownView
+      ariaLabel="Markdown preview"
+      className="markdown-preview"
+      value={'Flow:\n\n```mermaid\ngraph TD\n  A --> B\n```\n'}
+      variant="embedded"
+    />,
+  );
+
+  await waitFor(() => {
+    expect(view.container.querySelector('.codiff-mermaid-diagram .rendered-mermaid')).not.toBe(
+      null,
+    );
+  });
+
+  const [, sourceButton] =
+    view.container.querySelectorAll<HTMLButtonElement>('.codiff-mermaid-toggle');
+  sourceButton?.click();
+
+  await waitFor(() => {
+    expect(view.container.querySelector('.codiff-mermaid-diagram')).toBe(null);
+    expect(sourceButton?.getAttribute('aria-pressed')).toBe('true');
+  });
 });

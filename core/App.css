@@ -2360,6 +2360,70 @@ html[data-codiff-platform='darwin'] .sidebar {
   min-height: 0;
 }
 
+.codiff-mermaid {
+  border: 1px solid var(--file-border);
+  border-radius: 12px;
+  corner-shape: squircle;
+  margin: 8px;
+  min-width: 0;
+  overflow: clip;
+}
+
+.codiff-mermaid-toolbar {
+  border-bottom: 1px solid var(--file-border);
+  display: flex;
+  gap: 2px;
+  justify-content: flex-end;
+  padding: 4px;
+}
+
+.codiff-mermaid-toggle {
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font: 600 11px/1 var(--font-sans);
+  gap: 4px;
+  padding: 5px 7px;
+}
+
+.codiff-mermaid-toggle:hover {
+  background: var(--hover-wash);
+  color: var(--text);
+}
+
+.codiff-mermaid-toggle[aria-pressed='true'] {
+  background: var(--hover-wash);
+  color: var(--text);
+}
+
+.codiff-mermaid-diagram {
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+  padding: 12px;
+}
+
+.codiff-mermaid-diagram svg {
+  height: auto;
+  max-width: 100%;
+}
+
+.codiff-mermaid-loading,
+.codiff-mermaid-error {
+  color: var(--muted);
+  font: 12px/1.4 var(--font-sans);
+  padding: 12px;
+}
+
+.codiff-mermaid-error {
+  border-bottom: 1px solid var(--file-border);
+  color: var(--danger);
+}
+
 .codiff-markdown-details {
   background: color-mix(in srgb, var(--file-bg) 98%, var(--text) 2%);
   border: 1px solid var(--file-border);
