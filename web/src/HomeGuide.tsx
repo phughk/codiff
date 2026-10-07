@@ -1,4 +1,7 @@
 import { auth } from 'void/client/react';
+import darkPreview from './assets/codiff-dark.webp';
+import lightPreview from './assets/codiff-light.webp';
+import icon from './assets/icon.webp';
 import SignInButton from './SignInButton.tsx';
 
 const cliCommands = [
@@ -27,24 +30,26 @@ export default function HomeGuide() {
     <main className="codiff-web-page codiff-web-guide">
       <div className="codiff-web-guide-hero">
         <section className="codiff-web-guide-intro">
-          <img alt="" className="codiff-web-hero-icon" draggable={false} src="/icon.png" />
+          <img alt="" className="codiff-web-hero-icon" draggable={false} src={icon} />
           <h1>Codiff</h1>
           <p>Effective code reviews locally and on the web</p>
-          {!isPending && !session?.user ? (
-            <div className="codiff-web-guide-cta">
+          <div className="codiff-web-guide-cta">
+            {!isPending && !session?.user ? (
               <SignInButton size="lg" variant="default">
                 Continue with GitHub
               </SignInButton>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </section>
         <aside aria-label="Codiff preview" className="codiff-web-guide-preview">
           <picture>
-            <source media="(prefers-color-scheme: dark)" srcSet="/codiff-dark.png" />
+            <source media="(prefers-color-scheme: dark)" srcSet={darkPreview} />
             <img
               alt="A Codiff walkthrough reviewing code changes"
               draggable={false}
-              src="/codiff-light.png"
+              height={1046}
+              src={lightPreview}
+              width={1600}
             />
           </picture>
         </aside>

@@ -30,6 +30,7 @@ const {
 } = require('./git-state.cjs');
 const { attachExternalLinkHandling } = require('./external-links.cjs');
 const { normalizeOpenAIModel } = require('./codex.cjs');
+const { readCodexModels } = require('./codex-models.cjs');
 const { normalizeClaudeModel } = require('./claude.cjs');
 const { normalizeOpenCodeModel, renderOpenCodeCommand } = require('./opencode.cjs');
 const { createWalkthroughCommit } = require('./walkthrough-commit.cjs');
@@ -87,6 +88,8 @@ const { createEditorOpener } = require('./main/editor.cjs');
 const { createDefinitionSearchCoordinator } = require('./definition-search.cjs');
 const { createTerminalHelper } = require('./main/terminal-helper.cjs');
 const {
+  MIN_WINDOW_HEIGHT,
+  MIN_WINDOW_WIDTH,
   readWindowState,
   validateWindowStateOnScreen,
   writeWindowState,
@@ -111,6 +114,7 @@ const {
   watchMarkdownDocument,
   writeMarkdownDocument,
 } = require('./markdown-document.cjs');
+const { readRepositoryFile, writeRepositoryFile } = require('./repository-file.cjs');
 const {
   createRepositoryWatcherCoordinator,
   readRepositoryWatcherSnapshot,
@@ -160,6 +164,11 @@ let config = createDefaultConfig();
 const walkthroughCache = createWalkthroughCache({
   getMaxAgeDays: () => config.settings.walkthroughCacheMaxAgeDays,
 });
+/** @type {ReadonlyArray<import('./codex-models.cjs').CodexModel> | undefined} */
+let codexModels;
+/** @type {Promise<void> | undefined} */
+let codexModelDiscovery;
+const codexModelDiscoveryAbort = new AbortController();
 
 /**
  * @type {Map<string, ReturnType<typeof createSkillInstaller>>}
@@ -238,6 +247,9 @@ const resolveWindowTaskAgent = (webContentsId, task) => {
     agentOptions: {
       fallbackModel: agent.fallbackModel,
       model,
+      ...(agent.id === 'codex'
+        ? { reasoningEffort: config.settings.openAIReasoningEffort || undefined }
+        : {}),
       /** @param {string} fallbackModel */
       onModelFallback: async (fallbackModel) => {
         if (overridesModel) {
@@ -444,6 +456,7 @@ const selectAgentBackend = (backend) => {
   }
 
   updateConfig({ settings: { ...config.settings, agentBackend } });
+  if (agentBackend === 'codex') void loadCodexModels();
 };
 
 /** @param {import('./agent.cjs').Agent} agent @param {string} model */
@@ -453,7 +466,18 @@ const selectAgentModel = (agent, model) => {
     return;
   }
 
-  updateConfig({ settings: { ...config.settings, [agent.modelSettingKey]: normalized } });
+  const modelInfo =
+    agent.id === 'codex' ? codexModels?.find((item) => item.id === normalized) : undefined;
+  const effort = config.settings.openAIReasoningEffort;
+  updateConfig({
+    settings: {
+      ...config.settings,
+      [agent.modelSettingKey]: normalized,
+      ...(modelInfo && effort && !modelInfo.reasoningEfforts.includes(effort)
+        ? { openAIReasoningEffort: '' }
+        : {}),
+    },
+  });
 };
 
 /**
@@ -606,7 +630,11 @@ const buildAgentSubmenu = () =>
 const buildModelSubmenu = () => {
   const agent = getActiveAgent();
   const selectedModel = config.settings[agent.modelSettingKey];
-  return getAgentMenuModels(agent, selectedModel).map((model) => ({
+  return getAgentMenuModels(
+    agent,
+    selectedModel,
+    agent.id === 'codex' ? codexModels : undefined,
+  ).map((model) => ({
     checked: selectedModel === model.id,
     click: () => selectAgentModel(agent, model.id),
     label: model.label,
@@ -630,8 +658,11 @@ const buildTaskAgentSubmenu = () =>
     const defaultAgent = getActiveAgent();
     const defaultModel = config.settings[defaultAgent.modelSettingKey];
     const defaultModelLabel =
-      getAgentMenuModels(defaultAgent, defaultModel).find((model) => model.id === defaultModel)
-        ?.label ?? defaultModel;
+      getAgentMenuModels(
+        defaultAgent,
+        defaultModel,
+        defaultAgent.id === 'codex' ? codexModels : undefined,
+      ).find((model) => model.id === defaultModel)?.label ?? defaultModel;
     return {
       label: TASK_LABELS[task],
       submenu: [
@@ -652,6 +683,7 @@ const buildTaskAgentSubmenu = () =>
             submenu: getAgentMenuModels(
               agent,
               selectedModel ?? config.settings[agent.modelSettingKey],
+              agent.id === 'codex' ? codexModels : undefined,
             ).map((model) => ({
               checked: selectedModel === model.id,
               click: () => selectTaskAgent(task, agent.id, model.id),
@@ -663,6 +695,34 @@ const buildTaskAgentSubmenu = () =>
       ],
     };
   });
+
+const loadCodexModels = () => {
+  codexModelDiscovery ??= readCodexModels({ signal: codexModelDiscoveryAbort.signal })
+    .then((models) => {
+      if (models.length && !codexModelDiscoveryAbort.signal.aborted) {
+        codexModels = models;
+        Menu.setApplicationMenu(buildApplicationMenu());
+      }
+    })
+    .catch(() => {
+      codexModelDiscovery = undefined;
+    });
+  return codexModelDiscovery;
+};
+
+/** @returns {Array<import('electron').MenuItemConstructorOptions>} */
+const buildReasoningEffortSubmenu = () => {
+  const selected = config.settings.openAIReasoningEffort;
+  const model = codexModels?.find((item) => item.id === config.settings.openAIModel);
+  const advertised = model ? model.reasoningEfforts : ['low', 'medium', 'high'];
+  const efforts = [...new Set(['', ...advertised, ...(selected ? [selected] : [])])];
+  return efforts.map((effort) => ({
+    checked: selected === effort,
+    click: () => updateConfig({ settings: { ...config.settings, openAIReasoningEffort: effort } }),
+    label: !effort ? 'Default' : advertised.includes(effort) ? effort : `Custom: ${effort}`,
+    type: 'radio',
+  }));
+};
 
 const getInstallSkillMenuItem = () =>
   buildInstallSkillMenuItem(
@@ -721,6 +781,9 @@ const buildApplicationMenu = () =>
                   label: 'Model',
                   submenu: buildModelSubmenu(),
                 },
+                ...(getActiveAgent().id === 'codex'
+                  ? [{ label: 'Reasoning Effort', submenu: buildReasoningEffortSubmenu() }]
+                  : []),
                 {
                   label: 'Agent per Task',
                   submenu: buildTaskAgentSubmenu(),
@@ -773,6 +836,9 @@ const buildApplicationMenu = () =>
                   label: 'Model',
                   submenu: buildModelSubmenu(),
                 },
+                ...(getActiveAgent().id === 'codex'
+                  ? [{ label: 'Reasoning Effort', submenu: buildReasoningEffortSubmenu() }]
+                  : []),
                 {
                   label: 'Agent per Task',
                   submenu: buildTaskAgentSubmenu(),
@@ -881,6 +947,16 @@ const buildApplicationMenu = () =>
                   });
                 },
                 label: 'Show Whitespace',
+                type: 'checkbox',
+              },
+              {
+                checked: config.settings.expandUnchanged,
+                click: (menuItem) => {
+                  updateConfig({
+                    settings: { ...config.settings, expandUnchanged: menuItem.checked },
+                  });
+                },
+                label: 'Expand Unchanged Lines',
                 type: 'checkbox',
               },
               { type: 'separator' },
@@ -1017,8 +1093,8 @@ const createWindow = (
         ? '#141414'
         : '#ffffff',
     height: validatedState?.height ?? Math.max(720, Math.floor(height * 0.86)),
-    minHeight: 520,
-    minWidth: 880,
+    minHeight: MIN_WINDOW_HEIGHT,
+    minWidth: MIN_WINDOW_WIDTH,
     show: false,
     titleBarStyle: useMacVibrancy ? 'hiddenInset' : 'default',
     ...(useMacVibrancy
@@ -1099,6 +1175,20 @@ const createWindow = (
   window.once('ready-to-show', () => window.show());
   let allowClose = false;
   let copyingPendingCommentsBeforeClose = false;
+  window.webContents.on('will-prevent-unload', (event) => {
+    const response = dialog.showMessageBoxSync(window, {
+      buttons: ['Keep Editing', 'Close Anyway'],
+      cancelId: 0,
+      defaultId: 0,
+      message: 'Close before saving finishes?',
+      detail: 'Some edits have not reached disk yet. Already auto-saved edits will be kept.',
+      type: 'warning',
+    });
+    // Electron uses preventDefault here to allow the otherwise blocked unload.
+    if (response === 1) {
+      event.preventDefault();
+    }
+  });
   window.on('close', (event) => {
     try {
       const normalBounds = window.getNormalBounds();
@@ -1495,8 +1585,12 @@ if (squirrelStartup || !lock) {
       nativeTheme.themeSource = config.settings.theme;
       sendConfigChanged();
       Menu.setApplicationMenu(buildApplicationMenu());
+      if (getActiveAgent().id === 'codex') void loadCodexModels();
     });
+    if (getActiveAgent().id === 'codex') void loadCodexModels();
   });
+
+  app.on('will-quit', () => codexModelDiscoveryAbort.abort());
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -1607,6 +1701,27 @@ ipcMain.handle('codiff:getMarkdownDocument', async (event, request) => {
   }
   ensureMarkdownDocumentWatcher(event.sender, request);
   return document;
+});
+
+ipcMain.handle('codiff:getRepositoryFile', (event, path) =>
+  readRepositoryFile(getWindowRepositoryRoot(event.sender.id), path),
+);
+
+ipcMain.handle('codiff:saveRepositoryFile', async (event, request) => {
+  const root = getWindowRepositoryRoot(event.sender.id);
+  const current = await readRepositoryFile(root, request.path);
+  const selfWrite = beginRepositorySelfWrite(event.sender.id, current.path);
+  try {
+    const result = await writeRepositoryFile(root, request);
+    finishRepositorySelfWrite(
+      selfWrite,
+      result.status === 'saved' ? result.document.version : null,
+    );
+    return result;
+  } catch (error) {
+    finishRepositorySelfWrite(selfWrite, null);
+    throw error;
+  }
 });
 
 ipcMain.handle('codiff:saveMarkdownDocument', async (event, request) => {
@@ -1784,12 +1899,14 @@ ipcMain.handle('codiff:getNarrativeWalkthrough', async (event, source, options) 
       state,
       walkthroughAgent,
       agentOptions.model,
+      agentOptions.reasoningEffort,
     );
     const walkthroughPrompt = config.settings.walkthroughPrompt;
     if (!options?.force) {
       const cachedWalkthrough = walkthroughCache.read(state, walkthroughAgent, walkthroughModel, {
         context: walkthroughContext,
         customPrompt: walkthroughPrompt,
+        reasoningEffort: agentOptions.reasoningEffort,
       });
       if (cachedWalkthrough) {
         return { status: 'ready', walkthrough: cachedWalkthrough };
@@ -1817,6 +1934,7 @@ ipcMain.handle('codiff:getNarrativeWalkthrough', async (event, source, options) 
     if (result.status === 'ready') {
       walkthroughCache.write(state, walkthroughAgent, generatedModel, result.walkthrough, {
         customPrompt: walkthroughPrompt,
+        reasoningEffort: agentOptions.reasoningEffort,
       });
     }
     return result;

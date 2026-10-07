@@ -170,6 +170,35 @@ const createLoadedMarkdownFile = (contents: string, fingerprint: string) => {
   };
 };
 
+const createCombinedFile = (contents: string, fingerprint: string) => {
+  const file = createLoadedMarkdownFile(contents, fingerprint);
+  const section = file.sections[0]!;
+  return {
+    ...file,
+    sections: [
+      {
+        ...section,
+        id: 'plan.md:commit',
+        kind: 'commit' as const,
+        newFile: {
+          contents: '# Committed\n',
+          name: file.path,
+        },
+        patch: 'diff --git a/plan.md b/plan.md\n@@ -1 +1 @@\n-# Original\n+# Committed\n',
+      },
+      {
+        ...section,
+        id: 'plan.md:unstaged',
+        kind: 'unstaged' as const,
+        oldFile: {
+          contents: '# Committed\n',
+          name: file.path,
+        },
+      },
+    ],
+  } satisfies ChangedFile;
+};
+
 test('generated files are collapsed by default and can be explicitly expanded per review', async () => {
   const file = createChangedFile('src/__generated__/api.ts');
   const reviewKey = 'walkthrough:generated-api';
@@ -283,34 +312,6 @@ test('switching edited Markdown back to a diff flushes and refreshes it first', 
 
 test('combined branch Markdown edits only the final working-tree section', async () => {
   const order: Array<string> = [];
-  const createCombinedFile = (contents: string, fingerprint: string) => {
-    const file = createLoadedMarkdownFile(contents, fingerprint);
-    const section = file.sections[0]!;
-    return {
-      ...file,
-      sections: [
-        {
-          ...section,
-          id: 'plan.md:commit',
-          kind: 'commit' as const,
-          newFile: {
-            contents: '# Committed\n',
-            name: file.path,
-          },
-          patch: 'diff --git a/plan.md b/plan.md\n@@ -1 +1 @@\n-# Original\n+# Committed\n',
-        },
-        {
-          ...section,
-          id: 'plan.md:unstaged',
-          kind: 'unstaged' as const,
-          oldFile: {
-            contents: '# Committed\n',
-            name: file.path,
-          },
-        },
-      ],
-    } satisfies ChangedFile;
-  };
   const initialFile = createCombinedFile('# Edited\n', 'plan.md:combined-initial');
   const refreshedFile = createCombinedFile('# Saved\n', 'plan.md:combined-refreshed');
   const combinedSource = {
@@ -758,6 +759,76 @@ test('focused walkthrough blocks resolve active search matches to rendered item 
       }),
     );
   });
+});
+
+test('focused walkthrough blocks keep the scroll position when a comment opens during search', async () => {
+  const file = createChangedFileWithPatch(
+    'src/search.ts',
+    'diff --git a/src/search.ts b/src/search.ts\n@@ -1,2 +1,2 @@\n-old\n-other\n+needle\n+other2\n',
+  );
+  const activeSearchMatch = {
+    filePath: file.path,
+    itemId: `diff:${file.sections[0].id}`,
+    lineNumber: 1,
+    side: 'additions',
+  } as const;
+  const blocks: ReadonlyArray<ReviewDiffBlock> = [
+    { file, id: 'walkthrough:s1:0', itemIdPrefix: 'walkthrough:s1:0' },
+  ];
+  const comment = {
+    body: '',
+    filePath: file.path,
+    id: 'comment-1',
+    lineNumber: 2,
+    sectionId: file.sections[0].id,
+    side: 'additions',
+  } satisfies ReviewComment;
+
+  const container = document.createElement('div');
+  document.body.append(container);
+  let root: Root | null = null;
+
+  await using _resource = {
+    async [Symbol.asyncDispose]() {
+      if (root) {
+        await act(async () => root?.unmount());
+      }
+      container.remove();
+    },
+  };
+  await act(async () => {
+    root = createRoot(container);
+    root.render(
+      <ReviewCodeViewHarness
+        activeSearchMatch={activeSearchMatch}
+        blocks={blocks}
+        comments={[]}
+        files={[file]}
+      />,
+    );
+  });
+  await waitFor(() => {
+    expect(codeViewMock.scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({ lineNumber: 1, type: 'line' }),
+    );
+  });
+  codeViewMock.scrollTo.mockClear();
+
+  await act(async () => {
+    root?.render(
+      <ReviewCodeViewHarness
+        activeSearchMatch={activeSearchMatch}
+        blocks={blocks}
+        comments={[comment]}
+        files={[file]}
+      />,
+    );
+  });
+
+  expect(container.querySelector('textarea')).not.toBeNull();
+  expect(codeViewMock.scrollTo).not.toHaveBeenCalledWith(
+    expect.objectContaining({ lineNumber: 1, type: 'line' }),
+  );
 });
 
 test('review comment drafts resync clean external updates and reset on comment switch', async () => {
@@ -2361,7 +2432,7 @@ test('Enter on a focused review control is not converted into a hunk comment', a
   await act(async () => {
     render(1);
   });
-  const openButton = container.querySelector<HTMLButtonElement>('.codiff-button');
+  const openButton = container.querySelector<HTMLButtonElement>('.codiff-open-file-button');
   if (!openButton) {
     throw new Error('Expected the open file button.');
   }

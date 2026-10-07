@@ -40,7 +40,12 @@ const {
     customPrompt?: string,
     previousWalkthrough?: unknown,
   ) => Promise<any>;
-  resolveNarrativeWalkthroughModel: (state: any, agent: any, model: unknown) => string;
+  resolveNarrativeWalkthroughModel: (
+    state: any,
+    agent: any,
+    model: unknown,
+    reasoningEffort?: string,
+  ) => string;
 };
 const { narrativeWalkthroughResponseSchema } = require('../narrative-walkthrough-schema.cjs') as {
   narrativeWalkthroughResponseSchema: any;
@@ -437,7 +442,7 @@ test.each([
   },
 );
 
-test('uses GPT-5.5 for large walkthroughs only when Codex is on the default model', () => {
+test('uses GPT-5.5 for large walkthroughs only with automatic effort on the default model', () => {
   const createState = (hunkCount: number) => ({
     branch: 'main',
     files: [
@@ -473,6 +478,9 @@ test('uses GPT-5.5 for large walkthroughs only when Codex is on the default mode
   expect(resolveNarrativeWalkthroughModel(createState(100), codexAgent, 'gpt-5.6-terra')).toBe(
     'gpt-5.5',
   );
+  expect(
+    resolveNarrativeWalkthroughModel(createState(100), codexAgent, 'gpt-5.6-terra', 'max'),
+  ).toBe('gpt-5.6-terra');
   expect(resolveNarrativeWalkthroughModel(createState(100), codexAgent, 'gpt-5.6-sol')).toBe(
     'gpt-5.6-sol',
   );

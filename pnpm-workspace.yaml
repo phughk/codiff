@@ -20,10 +20,14 @@ allowBuilds:
 blockExoticSubdeps: false
 minimumReleaseAgeExclude:
   - '@nkzw/*'
+  - void-fate
+  - '@void/*'
+  - react-fate
+  - void
 catalog:
-  vite: npm:@voidzero-dev/vite-plus-core@^0.3.1
-  vite-plus: ^0.3.2
-  vitest: 5.0.0
+  vite: npm:@voidzero-dev/vite-plus-core@1.0.0
+  vite-plus: 1.0.0
+  vitest: 5.0.2
 nodeLinker: hoisted
 onlyBuiltDependencies:
   - '@nkzw/mdx-editor'
@@ -33,10 +37,9 @@ onlyBuiltDependencies:
   - unrs-resolver
 overrides:
   extract-zip>yauzl: ^3.4.0
-  vite: 'catalog:'
-  # Keep Vite+ on the main suite's Vitest version without overriding the Workers suite.
-  vite-plus>vitest: 'catalog:'
+  vite@*: 'catalog:'
 patchedDependencies:
+  '@pierre/diffs@1.5.1': patches/@pierre__diffs@1.5.1.patch
   native-keymap@3.3.9: patches/native-keymap@3.3.9.patch
 peerDependencyRules:
   allowAny:

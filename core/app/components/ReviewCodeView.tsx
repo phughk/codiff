@@ -1,5 +1,6 @@
 import type { MarkdownEditorHandle } from '@nkzw/mdx-editor';
 import { frontmatterPlugin, imagePlugin } from '@nkzw/mdx-editor/core';
+import { ArrowSquareOutIcon as ArrowSquareOut } from '@phosphor-icons/react/ArrowSquareOut';
 import { CaretDownIcon as CaretDown } from '@phosphor-icons/react/CaretDown';
 import { ChatCircleIcon as ChatCircle } from '@phosphor-icons/react/ChatCircle';
 import { ChatCircleDotsIcon as ChatCircleDots } from '@phosphor-icons/react/ChatCircleDots';
@@ -7,6 +8,7 @@ import { CheckIcon as Check } from '@phosphor-icons/react/Check';
 import { CodeIcon as Code } from '@phosphor-icons/react/Code';
 import { ColumnsIcon as Columns } from '@phosphor-icons/react/Columns';
 import { ImageBrokenIcon as ImageBroken } from '@phosphor-icons/react/ImageBroken';
+import { PencilSimpleIcon as PencilSimple } from '@phosphor-icons/react/PencilSimple';
 import { SquareSplitVerticalIcon as SquareSplitVertical } from '@phosphor-icons/react/SquareSplitVertical';
 import { WarningOctagonIcon as WarningOctagon } from '@phosphor-icons/react/WarningOctagon';
 import { XIcon as X } from '@phosphor-icons/react/X';
@@ -21,7 +23,12 @@ import {
   type LineAnnotation,
   type SelectedLineRange,
 } from '@pierre/diffs';
-import { CodeView, type CodeViewHandle, WorkerPoolContextProvider } from '@pierre/diffs/react';
+import {
+  CodeView,
+  type CodeViewHandle,
+  EditProvider,
+  WorkerPoolContextProvider,
+} from '@pierre/diffs/react';
 import { Copy as LucideCopy } from 'lucide-react';
 import {
   Fragment,
@@ -67,7 +74,6 @@ import {
   diffContextExpansionLineCount,
   maxWorkerThreads,
   sectionLabel,
-  statusLabel,
   workerHighlighterOptions,
 } from '../../lib/code-view-options.ts';
 import { applyDescriptionImages, useDescriptionImages } from '../../lib/description-images.ts';
@@ -124,6 +130,11 @@ import type {
   ReviewAuthor,
   ReviewSource,
 } from '../../types.ts';
+import {
+  createCodeEditor,
+  useCodeEditing,
+  type CodeEditingStore,
+} from '../hooks/useCodeEditing.ts';
 import { useCodeViewAnnotations } from '../hooks/useCodeViewAnnotations.ts';
 import { useCodeViewPlaceholderFile } from '../hooks/useCodeViewPlaceholderFile.ts';
 import { agentIconUrl } from './agentIcon.ts';
@@ -210,9 +221,46 @@ function CopyFilePathButton({ path }: { path: string }) {
   );
 }
 
+function CodeEditButton({
+  disabled,
+  isBusy,
+  item,
+  meta,
+  onEdit,
+  onPrepare,
+}: {
+  disabled: boolean;
+  isBusy: boolean;
+  item: CodeViewItem<ReviewAnnotationMetadata>;
+  meta: CodeViewItemMetadata;
+  onEdit: () => void;
+  onPrepare: ReturnType<typeof useCodeEditing>['prepareEdit'];
+}) {
+  useEffect(() => {
+    // Headers only mount for rendered items. Warm visible files without loading
+    // every file in the review, and surface any preparation failure on click.
+    void onPrepare(item, meta).catch(() => {});
+  }, [item, meta, onPrepare]);
+
+  return (
+    <Button
+      aria-label={`Edit ${meta.file.path}`}
+      disabled={disabled || isBusy}
+      onClick={onEdit}
+      title="Edit working-tree file"
+      type="button"
+    >
+      <PencilSimple aria-hidden size={14} weight="bold" />
+      Edit
+    </Button>
+  );
+}
+
 function CodeViewHeader({
   allowViewedToggle,
   canCreateFileComment,
+  editActions,
+  isEditing = false,
   isSectionLoading,
   meta,
   onCreateFileComment,
@@ -226,6 +274,8 @@ function CodeViewHeader({
 }: {
   allowViewedToggle: boolean;
   canCreateFileComment: boolean;
+  editActions?: ReactNode;
+  isEditing?: boolean;
   isSectionLoading: boolean;
   meta: CodeViewItemMetadata;
   onCreateFileComment: () => void;
@@ -254,6 +304,7 @@ function CodeViewHeader({
   } = meta;
   const canOpenFile = file.status !== 'deleted';
   const canLoadSection = shouldLoadDiffSectionContents(section);
+  const directoryEnd = file.path.lastIndexOf('/') + 1;
 
   return (
     <div
@@ -286,14 +337,42 @@ function CodeViewHeader({
         </span>
         <span className="codiff-file-heading">
           <span className="codiff-file-path-row">
-            <span className="codiff-file-path">{file.path}</span>
+            <span className="codiff-file-path" title={file.path}>
+              {directoryEnd > 0 ? (
+                <span className="codiff-file-directory">{file.path.slice(0, directoryEnd)}</span>
+              ) : null}
+              <span className="codiff-file-name">{file.path.slice(directoryEnd)}</span>
+            </span>
             <CopyFilePathButton path={file.path} />
+            {!readOnly && onOpenFile ? (
+              <button
+                aria-label={`Open ${file.path} in editor`}
+                className="codiff-open-file-button"
+                disabled={!canOpenFile}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenFile(file);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.stopPropagation();
+                  }
+                }}
+                title={canOpenFile ? 'Open file in editor' : 'Deleted files cannot be opened'}
+                type="button"
+              >
+                <ArrowSquareOut aria-hidden size={16} weight="bold" />
+              </button>
+            ) : null}
           </span>
           {file.oldPath ? <span className="codiff-file-old-path">{file.oldPath}</span> : null}
           {walkthroughNote ? (
             <span className="codiff-file-note">{walkthroughNote.reason}</span>
           ) : null}
         </span>
+      </div>
+      <div className="codiff-file-details">
+        <DiffLineCountBadge lineCount={lineCount} />
         {sectionCount > 1 ? (
           <span className={`codiff-section-badge ${section.kind}`}>
             {sectionLabel[section.kind]}
@@ -304,76 +383,67 @@ function CodeViewHeader({
             Generated
           </span>
         ) : null}
+        {canCreateFileComment ? (
+          <Button
+            className="codiff-file-comment-button"
+            onClick={onCreateFileComment}
+            title="Comment on file"
+            type="button"
+          >
+            <ChatCircle aria-hidden className="codiff-file-comment-icon" size={14} weight="bold" />
+            Comment
+          </Button>
+        ) : null}
+        {canRenderMarkdown ? (
+          <Button
+            aria-pressed={isMarkdownPreview}
+            className={`codiff-markdown-button${isMarkdownPreview ? ' active' : ''}`}
+            disabled={isEditing}
+            onClick={() => onToggleMarkdownPreview(file, section)}
+            title={isMarkdownPreview ? 'View as Diff' : 'View as Markdown'}
+            type="button"
+          >
+            {isMarkdownPreview ? 'View as Diff' : 'View as Markdown'}
+          </Button>
+        ) : null}
+        {canRenderGraph ? (
+          <Button
+            aria-pressed={isGraphPreview}
+            className={`codiff-markdown-button codiff-graph-button${isGraphPreview ? ' active' : ''}`}
+            disabled={isEditing}
+            onClick={() => onToggleGraphPreview(section)}
+            title={isGraphPreview ? 'View as Diff' : 'Render the graph before and after'}
+            type="button"
+          >
+            {isGraphPreview ? 'View as Diff' : 'View as Graph'}
+          </Button>
+        ) : null}
+        {editActions}
+        {canLoadSection && !readOnly ? (
+          <button
+            className="codiff-load-button"
+            disabled={isSectionLoading}
+            onClick={() => onLoadSection(file, section)}
+            title={isSectionLoading ? 'Loading file contents' : 'Load file contents'}
+            type="button"
+          >
+            {isSectionLoading ? 'Loading...' : 'Load'}
+          </button>
+        ) : null}
+        {!readOnly || allowViewedToggle ? (
+          <button
+            aria-pressed={isViewed}
+            className={`codiff-viewed-button${isViewed ? ' active' : ''}`}
+            onClick={() => onToggleViewed(file, isViewed, reviewIdentity)}
+            type="button"
+          >
+            <span aria-hidden className="codiff-viewed-checkbox">
+              {isViewed ? <Check className="codiff-viewed-check" size={10} weight="bold" /> : null}
+            </span>
+            Viewed
+          </button>
+        ) : null}
       </div>
-      <DiffLineCountBadge lineCount={lineCount} />
-      <div className={`codiff-status-badge ${file.status}`}>{statusLabel[file.status]}</div>
-      {canCreateFileComment ? (
-        <Button
-          className="codiff-file-comment-button"
-          onClick={onCreateFileComment}
-          title="Comment on file"
-          type="button"
-        >
-          <ChatCircle aria-hidden className="codiff-file-comment-icon" size={14} weight="bold" />
-          Comment
-        </Button>
-      ) : null}
-      {canRenderMarkdown ? (
-        <Button
-          aria-pressed={isMarkdownPreview}
-          className={`codiff-markdown-button${isMarkdownPreview ? ' active' : ''}`}
-          onClick={() => onToggleMarkdownPreview(file, section)}
-          title={isMarkdownPreview ? 'View as Diff' : 'View as Markdown'}
-          type="button"
-        >
-          {isMarkdownPreview ? 'View as Diff' : 'View as Markdown'}
-        </Button>
-      ) : null}
-      {canRenderGraph ? (
-        <Button
-          aria-pressed={isGraphPreview}
-          className={`codiff-markdown-button codiff-graph-button${isGraphPreview ? ' active' : ''}`}
-          onClick={() => onToggleGraphPreview(section)}
-          title={isGraphPreview ? 'View as Diff' : 'Render the graph before and after'}
-          type="button"
-        >
-          {isGraphPreview ? 'View as Diff' : 'View as Graph'}
-        </Button>
-      ) : null}
-      {canLoadSection && !readOnly ? (
-        <button
-          className="codiff-load-button"
-          disabled={isSectionLoading}
-          onClick={() => onLoadSection(file, section)}
-          title={isSectionLoading ? 'Loading file contents' : 'Load file contents'}
-          type="button"
-        >
-          {isSectionLoading ? 'Loading...' : 'Load'}
-        </button>
-      ) : null}
-      {!readOnly && onOpenFile ? (
-        <Button
-          disabled={!canOpenFile}
-          onClick={() => onOpenFile(file)}
-          title={canOpenFile ? 'Open file in editor' : 'Deleted files cannot be opened'}
-          type="button"
-        >
-          Open
-        </Button>
-      ) : null}
-      {!readOnly || allowViewedToggle ? (
-        <button
-          aria-pressed={isViewed}
-          className={`codiff-viewed-button${isViewed ? ' active' : ''}`}
-          onClick={() => onToggleViewed(file, isViewed, reviewIdentity)}
-          type="button"
-        >
-          <span aria-hidden className="codiff-viewed-checkbox">
-            {isViewed ? <Check className="codiff-viewed-check" size={10} weight="bold" /> : null}
-          </span>
-          Viewed
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -2759,6 +2829,7 @@ export function ReviewCodeView({
   allowViewedToggle = false,
   blocks,
   bottomInset = codeViewLayout.paddingBottom,
+  codeEditingStore,
   codeQualityFindings = [],
   collapsed,
   comments,
@@ -2767,6 +2838,7 @@ export function ReviewCodeView({
   diffStyle,
   disableWorkerPool = false,
   expandedReviewKeys = emptyExpandedReviewKeys,
+  expandUnchanged = false,
   files,
   focusCommentId,
   focusCommentRequest,
@@ -2824,6 +2896,7 @@ export function ReviewCodeView({
   allowViewedToggle?: boolean;
   blocks?: ReadonlyArray<ReviewDiffBlock>;
   bottomInset?: number;
+  codeEditingStore?: CodeEditingStore;
   codeQualityFindings?: ReadonlyArray<PullRequestCodeQualityFinding>;
   collapsed: ReadonlySet<string>;
   comments: ReadonlyArray<ReviewComment>;
@@ -2832,6 +2905,7 @@ export function ReviewCodeView({
   diffStyle: CodiffDiffStyle;
   disableWorkerPool?: boolean;
   expandedReviewKeys?: ReadonlySet<string>;
+  expandUnchanged?: boolean;
   files: ReadonlyArray<ChangedFile>;
   focusCommentId: string | null;
   focusCommentRequest: number;
@@ -2885,6 +2959,30 @@ export function ReviewCodeView({
   wordWrap: boolean;
 }) {
   const codeViewRef = useRef<CodeViewHandle<ReviewAnnotationMetadata, undefined>>(null);
+  const [codeViewElement, setCodeViewElement] = useState<HTMLDivElement | null>(null);
+  const [compactHeaders, setCompactHeaders] = useState(false);
+  useLayoutEffect(() => {
+    if (!codeViewElement) {
+      return;
+    }
+    const measure = () => {
+      const width = codeViewElement.getBoundingClientRect().width;
+      if (width > 0) {
+        setCompactHeaders(width <= 760);
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(codeViewElement);
+    return () => observer.disconnect();
+  }, [codeViewElement]);
+  const headerHeight = compactHeaders ? 90 : codeViewItemMetrics.diffHeaderHeight;
+  const itemMetrics = useMemo(
+    () => ({ ...codeViewItemMetrics, diffHeaderHeight: headerHeight }),
+    [headerHeight],
+  );
+  const codeViewStyle = { '--codiff-file-header-height': `${headerHeight}px` } as CSSProperties;
+
   const getPlaceholderFile = useCodeViewPlaceholderFile();
   const getAnnotations = useCodeViewAnnotations();
   const [markdownPreviewHeights] = useState(() => new Map<string, number>());
@@ -2900,6 +2998,9 @@ export function ReviewCodeView({
   const focusedCommentEditorIdRef = useRef<string | null>(null);
   const definitionHighlightFrameRef = useRef<number | null>(null);
   const highlightFrameRef = useRef<number | null>(null);
+  const lastScrolledSearchMatchRef = useRef<{ itemId: string; match: DiffSearchMatch } | null>(
+    null,
+  );
   const ignoreNextLineSelectionEndRef = useRef(false);
   const navigatedSelectionRef = useRef<CodeViewLineSelection | null>(null);
   const initialMarkdownFiles =
@@ -3409,6 +3510,128 @@ export function ReviewCodeView({
     ];
   }, [getPlaceholderFile, items, shouldShowCommitMessage, sourceDescriptionItemId]);
 
+  const highlightedCodeItems = codeViewItems.filter(
+    (item) => itemMetadata.get(item.id)?.isSelected,
+  );
+  const selectedCodeItemId =
+    highlightedCodeItems.find(
+      (item) =>
+        item.id === selectedLines?.id && itemMetadata.get(item.id)?.section.kind === 'unstaged',
+    )?.id ??
+    highlightedCodeItems.find((item) => itemMetadata.get(item.id)?.section.kind === 'unstaged')
+      ?.id ??
+    highlightedCodeItems[0]?.id;
+  const codeEditing = useCodeEditing({
+    codeViewRef,
+    items: codeViewItems,
+    keymap,
+    onLoadSectionContents,
+    onRefresh: onRefreshMarkdown,
+    selectedItemId: selectedCodeItemId,
+    sourceKey,
+    store: codeEditingStore,
+  });
+
+  const canEditCodeItem = useCallback(
+    (item: CodeViewItem<ReviewAnnotationMetadata>, meta: CodeViewItemMetadata | undefined) =>
+      meta != null &&
+      item.type === 'diff' &&
+      !isReadOnly &&
+      !meta.section.binary &&
+      (meta.section.loadState == null ||
+        meta.section.loadState === 'ready' ||
+        meta.section.loadState === 'deferred') &&
+      !meta.isMarkdownPreview &&
+      !meta.isGraphPreview &&
+      meta.section.kind === 'unstaged' &&
+      isEditableWorkingTreeSection(source.type, meta.file, meta.section) &&
+      onLoadSectionContents != null &&
+      window.codiff?.getRepositoryFile != null,
+    [isReadOnly, onLoadSectionContents, source.type],
+  );
+  const startCodeEdit = useCallback(
+    (item: CodeViewItem<ReviewAnnotationMetadata>, meta: CodeViewItemMetadata) => {
+      if (meta.isCollapsed) {
+        onToggleCollapsed(meta.file, true, meta.reviewIdentity.key);
+      }
+      void codeEditing.startEdit(item, meta);
+    },
+    [codeEditing, onToggleCollapsed],
+  );
+  const editAfterExpandRef = useRef<{ path: string; sourceKey: string } | null>(null);
+  useEffect(() => {
+    const pending = editAfterExpandRef.current;
+    if (!pending) {
+      return;
+    }
+    if (
+      pending.sourceKey !== sourceKey ||
+      !highlightedCodeItems.some((item) => itemMetadata.get(item.id)?.file.path === pending.path)
+    ) {
+      editAfterExpandRef.current = null;
+      return;
+    }
+    const item = highlightedCodeItems.find((candidate) => {
+      const meta = itemMetadata.get(candidate.id);
+      return meta?.file.path === pending.path && canEditCodeItem(candidate, meta);
+    });
+    const meta = item && itemMetadata.get(item.id);
+    if (item && meta) {
+      editAfterExpandRef.current = null;
+      startCodeEdit(item, meta);
+    }
+  }, [canEditCodeItem, highlightedCodeItems, itemMetadata, sourceKey, startCodeEdit]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.repeat ||
+        event.isComposing ||
+        isNativeInputTarget(event.target) ||
+        !matchesShortcut(event, keymap, 'editFile')
+      ) {
+        return;
+      }
+      const item = codeViewItems.find((candidate) => candidate.id === selectedCodeItemId);
+      const meta = item && itemMetadata.get(item.id);
+      if (!item || !meta || !codeEditing.canStartEdit(item.id, meta.file.path)) {
+        return;
+      }
+      if (!canEditCodeItem(item, meta)) {
+        // Collapsed files render only their first section, which may be staged.
+        // Expand first so editing uses the actual unstaged item and its annotations.
+        if (
+          !meta.isCollapsed ||
+          !getVisibleDiffSections(meta.file, showWhitespace).some(({ fileDiff, section }) =>
+            canEditCodeItem({ fileDiff, id: item.id, type: 'diff' }, { ...meta, section }),
+          )
+        ) {
+          return;
+        }
+        event.preventDefault();
+        editAfterExpandRef.current = { path: meta.file.path, sourceKey };
+        onToggleCollapsed(meta.file, true, meta.reviewIdentity.key);
+        return;
+      }
+      event.preventDefault();
+      startCodeEdit(item, meta);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    canEditCodeItem,
+    codeEditing,
+    codeViewItems,
+    itemMetadata,
+    keymap,
+    onToggleCollapsed,
+    selectedCodeItemId,
+    showWhitespace,
+    sourceKey,
+    startCodeEdit,
+  ]);
+
   const clearCommentLineHighlight = useCallback(() => {
     codeViewRef.current?.clearSelectedLines();
     navigatedSelectionRef.current = null;
@@ -3684,10 +3907,10 @@ export function ReviewCodeView({
         diffStyle,
         enableGutterUtility: !isReadOnly,
         enableLineSelection: !isReadOnly,
-        expandUnchanged: false,
+        expandUnchanged: expandUnchanged && loadDiffFiles != null,
         expansionLineCount: diffContextExpansionLineCount,
         hunkSeparators: 'line-info-basic',
-        itemMetrics: codeViewItemMetrics,
+        itemMetrics,
         layout: {
           ...codeViewLayout,
           paddingBottom: bottomInset,
@@ -3695,13 +3918,16 @@ export function ReviewCodeView({
         lineHoverHighlight: 'both',
         loadDiffFiles,
         onGutterUtilityClick: (range, context) => {
-          if (isReadOnly) {
+          if (isReadOnly || context.item.edit) {
             return;
           }
           ignoreNextLineSelectionEndRef.current = context.item.type === 'diff';
           createCommentForRange(range, context);
         },
         onLineClick: (line, context) => {
+          if (context.item.edit) {
+            return;
+          }
           const lineElement = 'lineElement' in line ? line.lineElement : null;
           const isDefinitionNavigation = isPrimaryModifier(line.event);
           if (isDefinitionNavigation && onFindDefinitions) {
@@ -3792,7 +4018,7 @@ export function ReviewCodeView({
           });
         },
         onLineSelectionEnd: (range, context) => {
-          if (isReadOnly) {
+          if (isReadOnly || context.item.edit) {
             return;
           }
           if (ignoreNextLineSelectionEndRef.current) {
@@ -3826,7 +4052,9 @@ export function ReviewCodeView({
           );
           node.classList.toggle(
             'codiff-loadable-summary-item',
-            metadata != null && shouldLoadDiffSectionContents(metadata.section),
+            !context.item.edit &&
+              metadata != null &&
+              shouldLoadDiffSectionContents(metadata.section),
           );
           node.classList.toggle(
             'codiff-loading-summary-item',
@@ -3834,7 +4062,11 @@ export function ReviewCodeView({
           );
           if (definitionModifierActiveRef.current) {
             window.requestAnimationFrame(() => {
-              if (definitionModifierActiveRef.current && node.isConnected) {
+              if (
+                definitionModifierActiveRef.current &&
+                node.isConnected &&
+                !codeViewRef.current?.getItem(context.item.id)?.edit
+              ) {
                 applyIdentifierNavigationState([{ element: node }], true);
               }
             });
@@ -3849,14 +4081,17 @@ export function ReviewCodeView({
         themeType: theme,
         tokenizeMaxLength: 100_000,
         unsafeCSS: codeViewUnsafeCSS,
+        useTokenTransformer: workerHighlighterOptions.useTokenTransformer,
       }) satisfies CodeViewOptions<ReviewAnnotationMetadata, undefined>,
     [
       bottomInset,
       cancelPendingEmptyCommentDeletes,
       createCommentForRange,
       diffStyle,
+      expandUnchanged,
       isReadOnly,
       itemMetadata,
+      itemMetrics,
       loadDiffFiles,
       loadingSectionIds,
       onCreateComment,
@@ -4136,7 +4371,6 @@ export function ReviewCodeView({
 
     handledHunkNavRef.current = hunkNavigation.request;
 
-    const headerHeight = codeViewItemMetrics.diffHeaderHeight;
     const anchors: Array<NavAnchor> = [];
     const seen = new Set<string>();
     const lineScrollTarget = (
@@ -4306,7 +4540,15 @@ export function ReviewCodeView({
       clearCommentLineHighlight();
     }
     handle.scrollTo(target.scrollTarget);
-  }, [clearCommentLineHighlight, diffLineHeight, diffStyle, hunkNavigation, itemMetadata, items]);
+  }, [
+    clearCommentLineHighlight,
+    diffLineHeight,
+    diffStyle,
+    headerHeight,
+    hunkNavigation,
+    itemMetadata,
+    items,
+  ]);
 
   // Enter on a navigated hunk starts a review comment on its selection and moves
   // focus into the new comment input.
@@ -4363,7 +4605,11 @@ export function ReviewCodeView({
 
     highlightFrameRef.current = window.requestAnimationFrame(() => {
       highlightFrameRef.current = null;
-      applySearchHighlights(viewer.getRenderedItems(), searchQuery, resolvedActiveSearchMatch);
+      applySearchHighlights(
+        viewer.getRenderedItems().filter(({ item }) => !item.edit),
+        searchQuery,
+        resolvedActiveSearchMatch,
+      );
     });
   }, [resolvedActiveSearchMatch, searchQuery]);
 
@@ -4378,12 +4624,18 @@ export function ReviewCodeView({
         definitionHighlightFrameRef.current = null;
       }
       if (!active) {
-        applyIdentifierNavigationState(nextViewer.getRenderedItems(), false);
+        applyIdentifierNavigationState(
+          nextViewer.getRenderedItems().filter(({ item }) => !item.edit),
+          false,
+        );
         return;
       }
       definitionHighlightFrameRef.current = window.requestAnimationFrame(() => {
         definitionHighlightFrameRef.current = null;
-        applyIdentifierNavigationState(nextViewer.getRenderedItems(), true);
+        applyIdentifierNavigationState(
+          nextViewer.getRenderedItems().filter(({ item }) => !item.edit),
+          true,
+        );
       });
     },
     [],
@@ -4486,11 +4738,33 @@ export function ReviewCodeView({
   useEffect(() => invalidateDefinitionLookup, [invalidateDefinitionLookup]);
 
   useEffect(() => {
+    if (!activeSearchMatch) {
+      lastScrolledSearchMatchRef.current = null;
+      return;
+    }
+
     const handle = codeViewRef.current;
     const viewer = handle?.getInstance();
     if (!handle || !viewer || !resolvedActiveSearchMatch) {
       return;
     }
+
+    // Walkthrough blocks re-resolve the match into a fresh object whenever the
+    // rendered items change, e.g. when opening a comment. Only scroll when the
+    // active match itself or its rendered item changes, so editing the diff
+    // while searching does not yank the view back to the match.
+    const lastScrolledSearchMatch = lastScrolledSearchMatchRef.current;
+    if (
+      lastScrolledSearchMatch?.match === activeSearchMatch &&
+      lastScrolledSearchMatch.itemId === resolvedActiveSearchMatch.itemId
+    ) {
+      scheduleSearchHighlights();
+      return;
+    }
+    lastScrolledSearchMatchRef.current = {
+      itemId: resolvedActiveSearchMatch.itemId,
+      match: activeSearchMatch,
+    };
 
     if (resolvedActiveSearchMatch.lineNumber == null) {
       handle.scrollTo({
@@ -4512,7 +4786,7 @@ export function ReviewCodeView({
     }
 
     scheduleSearchHighlights();
-  }, [resolvedActiveSearchMatch, scheduleSearchHighlights]);
+  }, [activeSearchMatch, resolvedActiveSearchMatch, scheduleSearchHighlights]);
 
   // Rendered as a non-virtualized element at the top of the CodeView scroll
   // content. Height changes (async markdown layout, editing) are re-measured
@@ -4573,28 +4847,86 @@ export function ReviewCodeView({
 
   const renderCustomHeader = useCallback(
     (item: CodeViewItem<ReviewAnnotationMetadata>) => {
-      const meta = itemMetadata.get(item.id);
+      const editSession = codeEditing.sessions.get(item.id);
+      const isEditing = editSession != null;
+      const meta = editSession?.metadata ?? itemMetadata.get(item.id);
+      const isBusy = codeEditing.isBusy(item.id);
+      const isAutosaving = editSession?.saving && !isBusy;
+      const canEdit = canEditCodeItem(item, meta);
+      const editError = codeEditing.getError(item.id);
       return meta ? (
-        <CodeViewHeader
-          allowViewedToggle={allowViewedToggle}
-          canCreateFileComment={canCreateFileComments}
-          isSectionLoading={loadingSectionIds.has(meta.section.id)}
-          meta={meta}
-          onCreateFileComment={() => createFileComment(meta, item.id)}
-          onLoadSection={onLoadSection}
-          onOpenFile={onOpenFile}
-          onToggleCollapsed={onToggleCollapsed}
-          onToggleGraphPreview={toggleGraphPreview}
-          onToggleMarkdownPreview={toggleMarkdownPreview}
-          onToggleViewed={onToggleViewed}
-          readOnly={isReadOnly}
-        />
+        <>
+          <CodeViewHeader
+            allowViewedToggle={allowViewedToggle}
+            canCreateFileComment={canCreateFileComments}
+            editActions={
+              isEditing ? (
+                <>
+                  <Button
+                    aria-label={`${editSession?.hasChanges ? 'Revert edits to' : 'Cancel editing'} ${meta.file.path}`}
+                    className="codiff-edit-revert-button"
+                    data-autosaving={isAutosaving ? '' : undefined}
+                    disabled={isBusy || editSession.saving}
+                    onClick={() => void codeEditing.revertEdit(item.id)}
+                    title={
+                      editSession?.hasChanges
+                        ? 'Restore the file to when editing started'
+                        : 'Cancel editing'
+                    }
+                    type="button"
+                    variant={editSession?.hasChanges ? 'destructive' : 'default'}
+                  >
+                    {editSession?.hasChanges ? 'Revert' : 'Cancel'}
+                  </Button>
+                  <Button
+                    aria-label={`Done editing ${meta.file.path}`}
+                    data-autosaving={isAutosaving ? '' : undefined}
+                    disabled={isBusy || editSession.saving}
+                    onClick={() => void codeEditing.doneEdit(item.id)}
+                    title="Finish editing; changes are saved automatically"
+                    type="button"
+                  >
+                    <Check aria-hidden size={14} weight="bold" />
+                    Done
+                  </Button>
+                </>
+              ) : canEdit ? (
+                <CodeEditButton
+                  disabled={!codeEditing.canStartEdit(item.id, meta.file.path)}
+                  isBusy={isBusy}
+                  item={item}
+                  meta={meta}
+                  onEdit={() => startCodeEdit(item, meta)}
+                  onPrepare={codeEditing.prepareEdit}
+                />
+              ) : null
+            }
+            isEditing={isEditing}
+            isSectionLoading={loadingSectionIds.has(meta.section.id)}
+            meta={meta}
+            onCreateFileComment={() => createFileComment(meta, item.id)}
+            onLoadSection={onLoadSection}
+            onOpenFile={onOpenFile}
+            onToggleCollapsed={onToggleCollapsed}
+            onToggleGraphPreview={toggleGraphPreview}
+            onToggleMarkdownPreview={toggleMarkdownPreview}
+            onToggleViewed={onToggleViewed}
+            readOnly={isReadOnly}
+          />
+          {editError ? (
+            <div className="codiff-code-edit-error" role="alert">
+              {editError}
+            </div>
+          ) : null}
+        </>
       ) : null;
     },
     [
       allowViewedToggle,
       canCreateFileComments,
+      canEditCodeItem,
       createFileComment,
+      codeEditing,
       itemMetadata,
       isReadOnly,
       loadingSectionIds,
@@ -4602,6 +4934,7 @@ export function ReviewCodeView({
       onOpenFile,
       onToggleCollapsed,
       onToggleViewed,
+      startCodeEdit,
       toggleGraphPreview,
       toggleMarkdownPreview,
     ],
@@ -4785,9 +5118,13 @@ export function ReviewCodeView({
 
   const codeView = (
     <CodeView
-      className="code-view"
+      className={`code-view${compactHeaders ? ' compact-file-headers' : ''}`}
+      containerRef={setCodeViewElement}
       disableWorkerPool={disableWorkerPool}
-      items={codeViewItems}
+      editorOptions={codeEditing.editorOptions}
+      items={codeEditing.items}
+      onItemEditChange={codeEditing.onItemEditChange}
+      onItemEditComplete={codeEditing.onItemEditComplete}
       onScroll={handleScroll}
       onSelectedLinesChange={setCodeViewSelectedLines}
       options={codeViewOptions}
@@ -4796,6 +5133,7 @@ export function ReviewCodeView({
       renderCodeViewHeader={sourceDescriptionItemId ? renderCodeViewHeader : undefined}
       renderCustomHeader={renderCustomHeader}
       selectedLines={isReadOnly ? null : selectedLines}
+      style={codeViewStyle}
     />
   );
 
@@ -4807,9 +5145,13 @@ export function ReviewCodeView({
       poolOptions={workerPoolOptions}
     >
       <CodeView
-        className="code-view"
+        className={`code-view${compactHeaders ? ' compact-file-headers' : ''}`}
+        containerRef={setCodeViewElement}
         disableWorkerPool={false}
-        items={codeViewItems}
+        editorOptions={codeEditing.editorOptions}
+        items={codeEditing.items}
+        onItemEditChange={codeEditing.onItemEditChange}
+        onItemEditComplete={codeEditing.onItemEditComplete}
         onScroll={handleScroll}
         onSelectedLinesChange={setCodeViewSelectedLines}
         options={codeViewOptions}
@@ -4818,13 +5160,14 @@ export function ReviewCodeView({
         renderCodeViewHeader={sourceDescriptionItemId ? renderCodeViewHeader : undefined}
         renderCustomHeader={renderCustomHeader}
         selectedLines={isReadOnly ? null : selectedLines}
+        style={codeViewStyle}
       />
     </WorkerPoolContextProvider>
   );
 
   return (
     <>
-      {renderedCodeView}
+      <EditProvider createEditor={createCodeEditor}>{renderedCodeView}</EditProvider>
       {showScrollProgress ? <ScrollLineProgress ref={scrollProgressRef} /> : null}
       {definitionLookup?.sourceKey === sourceKey && onOpenDefinition ? (
         <DefinitionPopover

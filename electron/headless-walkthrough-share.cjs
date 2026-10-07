@@ -259,9 +259,14 @@ const generateAndShareWalkthrough = async ({
   const walkthroughAgent = resolved.agent;
   let model = resolved.model;
   const customPrompt = config.settings.walkthroughPrompt;
+  const reasoningEffort =
+    walkthroughAgent.id === 'codex'
+      ? config.settings.openAIReasoningEffort || undefined
+      : undefined;
   const cachedWalkthrough = walkthroughCache.read(state, walkthroughAgent, model, {
     context,
     customPrompt,
+    reasoningEffort,
   });
   const result = cachedWalkthrough
     ? { status: 'ready', walkthrough: cachedWalkthrough }
@@ -271,6 +276,7 @@ const generateAndShareWalkthrough = async ({
         {
           fallbackModel: walkthroughAgent.fallbackModel,
           model,
+          ...(reasoningEffort ? { reasoningEffort } : {}),
           onModelFallback: async (fallbackModel) => {
             model = fallbackModel;
             if (resolved.overridesModel) {
@@ -289,7 +295,10 @@ const generateAndShareWalkthrough = async ({
     throw new Error(result.reason || `${walkthroughAgent.label} could not generate a walkthrough.`);
   }
   if (!cachedWalkthrough) {
-    walkthroughCache.write(state, walkthroughAgent, model, result.walkthrough, { customPrompt });
+    walkthroughCache.write(state, walkthroughAgent, model, result.walkthrough, {
+      customPrompt,
+      reasoningEffort,
+    });
   }
 
   return uploadWalkthrough({

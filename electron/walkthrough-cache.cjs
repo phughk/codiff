@@ -115,8 +115,9 @@ const PROMPT_TEMPLATE_HASH = createHash('sha256')
  * @param {CacheAgent} agent
  * @param {unknown} model
  * @param {unknown} [customPrompt]
+ * @param {string} [reasoningEffort]
  */
-const getNarrativeWalkthroughCacheKey = (state, agent, model, customPrompt) =>
+const getNarrativeWalkthroughCacheKey = (state, agent, model, customPrompt, reasoningEffort) =>
   createHash('sha256')
     .update(
       JSON.stringify({
@@ -125,6 +126,9 @@ const getNarrativeWalkthroughCacheKey = (state, agent, model, customPrompt) =>
         diff: getWalkthroughDiffHash(state.files),
         model: agent.normalizeModel(model),
         prompt: PROMPT_TEMPLATE_HASH,
+        ...(agent.id === 'codex' && reasoningEffort?.trim()
+          ? { reasoningEffort: reasoningEffort.trim() }
+          : {}),
         responseSchema: narrativeWalkthroughResponseSchema,
         version: WALKTHROUGH_CACHE_KEY_VERSION,
       }),
@@ -223,17 +227,17 @@ const createWalkthroughCache = ({ getMaxAgeDays = () => undefined, now = Date.no
      * @param {RepositoryState} state
      * @param {CacheAgent} agent
      * @param {unknown} model
-     * @param {{context?: WalkthroughContext | null; customPrompt?: unknown}} [options]
+     * @param {{context?: WalkthroughContext | null; customPrompt?: unknown; reasoningEffort?: string}} [options]
      * @returns {NarrativeWalkthrough | null}
      */
-    read(state, agent, model, { context, customPrompt } = {}) {
+    read(state, agent, model, { context, customPrompt, reasoningEffort } = {}) {
       const maxAgeMs = getMaxAgeMs(getMaxAgeDays());
       prune(maxAgeMs);
       if (maxAgeMs === 0) {
         return null;
       }
       const stored = readStoredWalkthrough(
-        getNarrativeWalkthroughCacheKey(state, agent, model, customPrompt),
+        getNarrativeWalkthroughCacheKey(state, agent, model, customPrompt, reasoningEffort),
       );
       if (!stored) {
         return null;
@@ -271,9 +275,9 @@ const createWalkthroughCache = ({ getMaxAgeDays = () => undefined, now = Date.no
      * @param {CacheAgent} agent
      * @param {unknown} model
      * @param {NarrativeWalkthrough} walkthrough
-     * @param {{customPrompt?: unknown}} [options]
+     * @param {{customPrompt?: unknown; reasoningEffort?: string}} [options]
      */
-    write(state, agent, model, walkthrough, { customPrompt } = {}) {
+    write(state, agent, model, walkthrough, { customPrompt, reasoningEffort } = {}) {
       const maxAgeMs = getMaxAgeMs(getMaxAgeDays());
       if (maxAgeMs === 0) {
         return;
@@ -282,7 +286,7 @@ const createWalkthroughCache = ({ getMaxAgeDays = () => undefined, now = Date.no
         const stored = toStoredWalkthrough(walkthrough, state.files);
         if (stored) {
           writeStoredWalkthrough(
-            getNarrativeWalkthroughCacheKey(state, agent, model, customPrompt),
+            getNarrativeWalkthroughCacheKey(state, agent, model, customPrompt, reasoningEffort),
             stored,
           );
         }

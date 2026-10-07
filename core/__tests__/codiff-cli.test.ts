@@ -49,6 +49,7 @@ beforeAll(async () => {
   await git(refRepositoryPath, ['branch', 'base']);
   await git(refRepositoryPath, ['commit', '--allow-empty', '-m', 'second']);
   await git(refRepositoryPath, ['branch', 'feature']);
+  await git(refRepositoryPath, ['branch', 'feature.v1']);
   const { stdout } = await execFileAsync('git', ['-C', refRepositoryPath, 'rev-parse', 'HEAD'], {
     encoding: 'utf8',
   });
@@ -640,6 +641,53 @@ test('packaged terminal helper forwards branch names to Electron as branches', a
     refRepositoryPath,
   ]);
 });
+
+test.each(['base...feature', 'base..feature', 'base...feature.v1', 'base..feature.v1'])(
+  'packaged terminal helper forwards the %s range to Electron unclassified',
+  async (range) => {
+    await using logger = await createFakeOpenLogger();
+
+    await execFileAsync(resolve('bin/codiff-app'), [range], {
+      cwd: refRepositoryPath,
+      env: logger.env,
+    });
+
+    expect(await logger.readArgs()).toEqual([
+      '-n',
+      resolve('bin/../../../..'),
+      '--args',
+      range,
+      refRepositoryPath,
+    ]);
+  },
+);
+
+test.each([
+  'base...missing',
+  'base....feature',
+  'base.....feature',
+  'base...feature..base',
+  'base..feature...base',
+])(
+  'packaged terminal helper forwards the invalid %s range to Electron as a branch',
+  async (range) => {
+    await using logger = await createFakeOpenLogger();
+
+    await execFileAsync(resolve('bin/codiff-app'), [range], {
+      cwd: refRepositoryPath,
+      env: logger.env,
+    });
+
+    expect(await logger.readArgs()).toEqual([
+      '-n',
+      resolve('bin/../../../..'),
+      '--args',
+      '--branch',
+      range,
+      refRepositoryPath,
+    ]);
+  },
+);
 
 test('packaged terminal helper forwards missing branch names to Electron as branches', async () => {
   await using logger = await createFakeOpenLogger();

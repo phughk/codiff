@@ -273,6 +273,12 @@ const mergeConfig = (raw) => {
         typeof rawKeymap.discardComment === 'string'
           ? rawKeymap.discardComment
           : defaults.keymap.discardComment,
+      doneEditing:
+        typeof rawKeymap.doneEditing === 'string'
+          ? rawKeymap.doneEditing
+          : defaults.keymap.doneEditing,
+      editFile:
+        typeof rawKeymap.editFile === 'string' ? rawKeymap.editFile : defaults.keymap.editFile,
       fileFilter:
         typeof rawKeymap.fileFilter === 'string'
           ? rawKeymap.fileFilter
@@ -327,11 +333,19 @@ const mergeConfig = (raw) => {
         typeof rawSettings.editorCommand === 'string'
           ? rawSettings.editorCommand
           : defaults.settings.editorCommand,
+      expandUnchanged:
+        typeof rawSettings.expandUnchanged === 'boolean'
+          ? rawSettings.expandUnchanged
+          : defaults.settings.expandUnchanged,
       lastRepositoryPath: normalizeLastRepositoryPath(rawSettings.lastRepositoryPath),
       openAIModel:
         typeof rawSettings.openAIModel === 'string'
           ? rawSettings.openAIModel
           : defaults.settings.openAIModel,
+      openAIReasoningEffort:
+        typeof rawSettings.openAIReasoningEffort === 'string'
+          ? rawSettings.openAIReasoningEffort.trim()
+          : defaults.settings.openAIReasoningEffort,
       opencodeModel:
         typeof rawSettings.opencodeModel === 'string'
           ? rawSettings.opencodeModel

@@ -42,6 +42,7 @@ const loadModules = () => {
         agent: any,
         model: unknown,
         customPrompt?: string,
+        reasoningEffort?: string,
       ) => string;
     },
     store: require('../walkthrough-store.cjs') as typeof import('../walkthrough-store.cjs'),
@@ -211,6 +212,30 @@ test('keys the cache on the diff and generation settings, not the review source'
   expect(
     cache.getNarrativeWalkthroughCacheKey(stagedState, agent, 'sonnet', 'Be concise.'),
   ).not.toBe(key);
+  const codex = { ...agent, id: 'codex' };
+  const automatic = cache.getNarrativeWalkthroughCacheKey(stagedState, codex, 'gpt-6.1-sol');
+  const low = cache.getNarrativeWalkthroughCacheKey(
+    stagedState,
+    codex,
+    'gpt-6.1-sol',
+    undefined,
+    'low',
+  );
+  const high = cache.getNarrativeWalkthroughCacheKey(
+    stagedState,
+    codex,
+    'gpt-6.1-sol',
+    undefined,
+    'high',
+  );
+  expect(high).not.toBe(low);
+  expect(high).not.toBe(automatic);
+  expect(
+    cache.getNarrativeWalkthroughCacheKey(stagedState, codex, 'gpt-6.1-sol', undefined, ''),
+  ).toBe(automatic);
+  expect(
+    cache.getNarrativeWalkthroughCacheKey(stagedState, agent, 'sonnet', undefined, 'high'),
+  ).toBe(key);
   const renamedState = {
     ...stagedState,
     files: [{ ...stagedState.files[0], path: 'src/Main.tsx' }, stagedState.files[1]],

@@ -1131,18 +1131,21 @@ const readPullRequestFilesSince = async (repoRoot, pullRequest, metadata, remote
   // with the commit itself instead and flag that base changes may show.
   const conflictPatches = new Map(
     await Promise.all(
-      [...conflictSet].map(async (path) => /** @type {const} */ ([
-        path,
-        await gitOrEmpty(repoRoot, [
-          'diff',
-          '--patch',
-          '--no-ext-diff',
-          sinceCommit,
-          head,
-          '--',
-          path,
-        ]),
-      ])),
+      [...conflictSet].map(
+        async (path) =>
+          /** @type {const} */ ([
+            path,
+            await gitOrEmpty(repoRoot, [
+              'diff',
+              '--patch',
+              '--no-ext-diff',
+              sinceCommit,
+              head,
+              '--',
+              path,
+            ]),
+          ]),
+      ),
     ),
   );
   const oldPathFor = (/** @type {GitHubPullRequestFile} */ file) =>

@@ -19,8 +19,10 @@ export type CodiffSettings = {
   copyCommentsOnClose: boolean;
   diffStyle: CodiffDiffStyle;
   editorCommand: string;
+  expandUnchanged: boolean;
   lastRepositoryPath: string;
   openAIModel: string;
+  openAIReasoningEffort: string;
   opencodeModel: string;
   piModel: string;
   reviewCommentsPrefix: string;
@@ -46,6 +48,8 @@ export type CodiffKeymap = {
   commandBar: KeyCombo;
   diffSearch: KeyCombo;
   discardComment: KeyCombo;
+  doneEditing: KeyCombo;
+  editFile: KeyCombo;
   fileFilter: KeyCombo;
   nextHunk: KeyComboBinding;
   nextSearchMatch: KeyCombo;
