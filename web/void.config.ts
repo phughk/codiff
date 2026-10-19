@@ -4,6 +4,7 @@ export default defineConfig({
   auth: { providers: ['github'] },
   cloudflare: {
     compatibility_date: '2026-07-16',
+    compatibility_flags: ['new_module_registry'],
     d1_databases: [
       {
         binding: 'DB',

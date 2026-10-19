@@ -81,6 +81,9 @@ const isBetterAuthApi = (value: unknown): value is SharingAuth =>
 const isFateEnv = (value: unknown): value is SharingFateEnv =>
   isRecord(value) && isRecord(value.DB) && typeof value.DB.prepare === 'function';
 
+const isDatabase = (value: unknown): value is Database =>
+  isRecord(value) && typeof value.select === 'function' && typeof value.batch === 'function';
+
 const getAuthenticatedUserId = async (context: SharingFateContext) => {
   if (!context.auth) {
     return null;
@@ -664,7 +667,7 @@ export const createSharingFateServer = ({
       }
       return {
         auth: isBetterAuthApi(context.auth) ? context.auth : null,
-        db: createDb(env.DB),
+        db: isDatabase(context.db) ? context.db : createDb(env.DB),
         env,
         request,
       };

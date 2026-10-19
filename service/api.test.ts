@@ -48,6 +48,11 @@ test('creates anonymous upload intents without touching persistent storage', asy
     DB: {
       batch: failOnDatabaseAccess,
       prepare: failOnDatabaseAccess,
+      withSession: () => ({
+        batch: failOnDatabaseAccess,
+        getBookmark: () => null,
+        prepare: failOnDatabaseAccess,
+      }),
     } as unknown as SharingEnv['DB'],
     PUBLIC_ORIGIN: 'https://codiff.dev',
     WALKTHROUGH_BUCKET: {

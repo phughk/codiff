@@ -80,6 +80,7 @@ import { applyDescriptionImages, useDescriptionImages } from '../../lib/descript
 import {
   canRenderImagePreview,
   getDiffLineCountFromVisibleSections,
+  getDiffParseOptions,
   getItemId,
   getGraphvizPreviewContents,
   getMarkdownPreviewContents,
@@ -4079,6 +4080,7 @@ export function ReviewCodeView({
           }
         },
         overflow: wordWrap ? 'wrap' : 'scroll',
+        parseDiffOptions: getDiffParseOptions(showWhitespace),
         stickyHeaders: true,
         theme: {
           dark: 'Dunkel',
@@ -4105,6 +4107,7 @@ export function ReviewCodeView({
       onLoadSection,
       revertCodeChanges,
       selectedHeaderItemIds,
+      showWhitespace,
       source,
       sourceKey,
       theme,

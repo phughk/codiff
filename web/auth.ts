@@ -14,6 +14,14 @@ export default defineAuth(({ defaults }) => {
       ...defaults.account,
       encryptOAuthTokens: true,
     },
+    session: {
+      ...defaults.session,
+      cookieCache: {
+        enabled: true,
+        maxAge: 60 * 60,
+        strategy: 'jwe',
+      },
+    },
     ...(github && typeof github !== 'function'
       ? {
           socialProviders: {

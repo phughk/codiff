@@ -1,6 +1,15 @@
 import { parsePlanShareUpload } from '@nkzw/codiff-core/share';
 import { z } from 'zod';
-import { and, db, eq, sql, withDatabase, type D1Binding } from './db.ts';
+import {
+  and,
+  createPrimaryDb,
+  createRequestDb,
+  db,
+  eq,
+  sql,
+  withDatabase,
+  type D1Binding,
+} from './db.ts';
 import { plan, shareDailyUsage, uploadIntent, user, walkthrough, type UserRow } from './schema.ts';
 import {
   createUploadIntentSecret,
@@ -544,7 +553,12 @@ const uploadShare = async (request: Request, env: SharingEnv, options: SharingAp
     return unauthorized();
   }
 
-  const [intent] = await db.select().from(uploadIntent).where(eq(uploadIntent.code, code)).limit(1);
+  // The CLI does not have the browser's bookmark from claiming this intent.
+  const [intent] = await createPrimaryDb(env.DB)
+    .select()
+    .from(uploadIntent)
+    .where(eq(uploadIntent.code, code))
+    .limit(1);
   if (
     !intent ||
     intent.status !== 'claimed' ||
@@ -754,8 +768,13 @@ const handleSharingApi = async (request: Request, env: SharingEnv, options: Shar
   return notFound();
 };
 
-export const handleSharingApiRequest = (
+export const handleSharingApiRequest = async (
   request: Request,
   env: SharingEnv,
   options: SharingApiOptions = {},
-): Promise<Response> => withDatabase(env.DB, () => handleSharingApi(request, env, options));
+): Promise<Response> => {
+  const database = createRequestDb(env.DB, request);
+  return database.withBookmark(
+    await withDatabase(database.db, () => handleSharingApi(request, env, options)),
+  );
+};

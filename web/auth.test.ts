@@ -22,6 +22,9 @@ test('supports Void schema generation without runtime provider defaults', () => 
     }),
   ).toMatchObject({
     account: { encryptOAuthTokens: true },
+    session: {
+      cookieCache: { enabled: true, maxAge: 60 * 60, strategy: 'jwe' },
+    },
     user: {
       additionalFields: {
         displayUsername: { type: 'string' },

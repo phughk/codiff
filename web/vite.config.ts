@@ -5,6 +5,7 @@ import { voidReact } from '@void/react/plugin';
 import { fate } from 'react-fate/vite';
 import { defineConfig, lazyPlugins } from 'vite-plus';
 import { voidPlugin } from 'void';
+import { optimizeBuild } from './build/optimizeBuild.ts';
 
 const codiffSourceConditions = [
   '@nkzw/codiff-source',
@@ -34,6 +35,19 @@ export default defineConfig({
       module: './src/server/fate.ts',
       transport: 'void',
     }),
+    {
+      apply: 'build',
+      buildApp: {
+        handler: (builder) =>
+          optimizeBuild(
+            resolve(builder.config.root, 'dist'),
+            builder.environments.client.config.build.assetsDir,
+          ),
+        order: 'post',
+      },
+      enforce: 'post',
+      name: 'codiff:optimize-web-build',
+    },
   ],
   resolve: {
     alias: [{ find: '@web', replacement: resolve(__dirname, '.') }],
