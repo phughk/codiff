@@ -202,6 +202,33 @@ export const codeViewUnsafeCSS = `
     display: none;
   }
 
+  /* While editing, the gutter button reverts the change under it instead of
+     adding a comment, so it only appears next to changed lines. */
+  [data-diff]:has([data-content][contenteditable="true"])
+    [data-column-number]:not([data-line-type^="change-"])
+    [data-gutter-utility-slot] {
+    display: none;
+  }
+
+  [data-diff]:has([data-content][contenteditable="true"]) [data-utility-button] {
+    background: color-mix(in srgb, var(--diffs-bg) 88%, var(--diffs-deletion-base));
+    border-color: color-mix(in srgb, var(--diffs-deletion-base) 34%, transparent);
+    color: var(--diffs-deletion-base);
+  }
+
+  [data-diff]:has([data-content][contenteditable="true"]) [data-utility-button] [data-icon] {
+    display: none;
+  }
+
+  [data-diff]:has([data-content][contenteditable="true"]) [data-utility-button]::after {
+    background: currentColor;
+    content: '';
+    height: 12px;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Cpath d='M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+    width: 12px;
+  }
+
   /* The imperative API wraps annotations in a node that resets white-space, but
      the React API slots them in bare, so they inherit "pre" from the shadow
      <pre> and prose never wraps. */

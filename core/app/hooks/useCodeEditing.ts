@@ -8,6 +8,7 @@ import {
   type CodeViewItem,
   type FileDiffLoadedFiles,
   type FileDiffMetadata,
+  type SelectedLineRange,
 } from '@pierre/diffs';
 import type {
   EditorChangeEvent,
@@ -33,6 +34,11 @@ import { DEFAULT_PADDING, workerHighlighterOptions } from '../../lib/code-view-o
 import { loadSectionContents } from '../../lib/diff.ts';
 import { getItemVersion } from '../../lib/item-version.ts';
 import { isNativeInputTarget } from '../../lib/keyboard.ts';
+import {
+  getChangesInDocumentLines,
+  getChangesInSelectedLines,
+  getRevertChangeEdits,
+} from '../../lib/revert-change.ts';
 import type { ChangedFile, DiffSection } from '../../types.ts';
 import {
   createCodeEditingStore,
@@ -342,6 +348,43 @@ export function useCodeEditing({
   );
 
   const doneEdit = useCallback((itemId: string) => finishEdit(itemId, false), [finishEdit]);
+
+  // Reverts whole change blocks to the base side through the editor, so the
+  // result autosaves and stays on the undo stack like any other edit.
+  // Without a line range, reverts the changes at the editor's selections.
+  const revertChanges = useCallback(
+    (itemId: string, range?: SelectedLineRange) => {
+      const entry = store.get(sourceKey, itemId);
+      const current = entry?.getSnapshot();
+      const editor = codeViewRef.current?.getEditor(itemId);
+      const state = editor?.getEditState();
+      if (!current || current.finishing || !editor || state?.type !== 'file-diff') {
+        return false;
+      }
+      const changes = range
+        ? getChangesInSelectedLines(state.diffSession, range)
+        : getChangesInDocumentLines(
+            state.diffSession,
+            (editor.getViewState().selections ?? []).map((selection) => {
+              const [start, end] =
+                selection.start.line <= selection.end.line
+                  ? [selection.start, selection.end]
+                  : [selection.end, selection.start];
+              // A selection ending at the start of a line does not include that line.
+              return {
+                end: end.line > start.line && end.character === 0 ? end.line - 1 : end.line,
+                start: start.line,
+              };
+            }),
+          );
+      if (changes.length === 0) {
+        return false;
+      }
+      editor.applyEdits(getRevertChangeEdits(state.diffSession, state.document, changes));
+      return true;
+    },
+    [codeViewRef, sourceKey, store],
+  );
   const revertEdit = useCallback((itemId: string) => finishEdit(itemId, true), [finishEdit]);
 
   const onItemEditChange = useCallback(
@@ -403,12 +446,12 @@ export function useCodeEditing({
       return;
     }
     const keyDown = (event: KeyboardEvent) => {
-      if (
-        event.defaultPrevented ||
-        event.repeat ||
-        event.isComposing ||
-        !matchesShortcut(event, keymap, 'doneEditing')
-      ) {
+      const action = matchesShortcut(event, keymap, 'doneEditing')
+        ? 'done'
+        : matchesShortcut(event, keymap, 'revertChange')
+          ? 'revert'
+          : null;
+      if (event.defaultPrevented || event.repeat || event.isComposing || !action) {
         return;
       }
       const path = event.composedPath();
@@ -431,13 +474,23 @@ export function useCodeEditing({
       if (itemId == null || !currentSessions.has(itemId)) {
         return;
       }
+      if (action === 'revert') {
+        // Only the editor owning the caret knows which change to revert.
+        if (focusedItemId == null) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        revertChanges(focusedItemId);
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       void doneEdit(itemId);
     };
     window.addEventListener('keydown', keyDown, true);
     return () => window.removeEventListener('keydown', keyDown, true);
-  }, [codeViewRef, currentSessions, doneEdit, keymap, selectedItemId]);
+  }, [codeViewRef, currentSessions, doneEdit, keymap, revertChanges, selectedItemId]);
 
   return {
     canStartEdit: (itemId: string, path: string) =>
@@ -454,6 +507,7 @@ export function useCodeEditing({
     onItemEditChange,
     onItemEditComplete,
     prepareEdit,
+    revertChanges,
     revertEdit,
     sessions: currentSessions,
     startEdit,

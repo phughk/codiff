@@ -222,6 +222,11 @@
           "default": "Mod+s",
           "description": "Save and finish editing the focused or highlighted file."
         },
+        "revertChange": {
+          "type": "string",
+          "default": "Mod+Alt+z",
+          "description": "While editing, revert the changes at the cursor or selection to the base version."
+        },
         "diffSearch": {
           "type": "string",
           "default": "Mod+f",

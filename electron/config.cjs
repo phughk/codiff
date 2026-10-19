@@ -295,6 +295,10 @@ const mergeConfig = (raw) => {
         typeof rawKeymap.prevSearchMatch === 'string'
           ? rawKeymap.prevSearchMatch
           : defaults.keymap.prevSearchMatch,
+      revertChange:
+        typeof rawKeymap.revertChange === 'string'
+          ? rawKeymap.revertChange
+          : defaults.keymap.revertChange,
       shortcutsHelp:
         typeof rawKeymap.shortcutsHelp === 'string'
           ? rawKeymap.shortcutsHelp

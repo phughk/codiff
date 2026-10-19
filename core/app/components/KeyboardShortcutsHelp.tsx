@@ -28,6 +28,7 @@ const SHORTCUT_GROUPS: ReadonlyArray<ShortcutGroup> = [
   {
     shortcuts: [
       { action: 'editFile', label: 'Edit highlighted file' },
+      { action: 'revertChange', label: 'Revert change at cursor' },
       { action: 'doneEditing', label: 'Done editing' },
     ],
     title: 'Editing',

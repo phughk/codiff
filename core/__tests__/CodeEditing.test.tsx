@@ -9,7 +9,7 @@ import {
   type FileDiffLoadedFiles,
 } from '@pierre/diffs';
 import { CodeView, EditProvider, type CodeViewHandle } from '@pierre/diffs/react';
-import { act, useMemo, useRef, useState } from 'react';
+import { act, useEffect, useMemo, useRef, useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test';
 import {
   createCodeEditor,
@@ -75,6 +75,7 @@ const loaded = {
 };
 const refresh = vi.fn(async () => true);
 let handle: CodeViewHandle<ReviewAnnotationMetadata, undefined> | null;
+let revertChanges: ReturnType<typeof useCodeEditing>['revertChanges'];
 let preparation: Promise<void> | null;
 let testStore: CodeEditingStore;
 
@@ -139,6 +140,9 @@ function Harness({
     sourceKey,
     store,
   });
+  useEffect(() => {
+    revertChanges = editing.revertChanges;
+  }, [editing.revertChanges]);
   return (
     <>
       <button
@@ -716,6 +720,91 @@ test.each(['Done', 'Revert'])(
     expect(testStore.getSnapshot().size).toBe(0);
   },
 );
+
+// Pierre scrolls the caret into view after programmatic edits in a later frame.
+HTMLElement.prototype.scrollIntoView ??= () => {};
+
+const multipleChanges = {
+  contents: 'a\nB\nc\nd\ne\nf\ng\nh\ni\nj\nK\nl\n',
+  oldContents: 'a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl\n',
+};
+
+const editMultipleChanges = async () => {
+  vi.mocked(window.codiff.getRepositoryFile).mockResolvedValue({
+    content: multipleChanges.contents,
+    path: file.path,
+    root: '/repo',
+    version: 'version',
+  });
+  const view = await renderReact(<Harness {...multipleChanges} />);
+  await click(view.container, 'Edit');
+  await act(async () => {
+    handle?.getInstance()?.render(true);
+  });
+  await waitFor(() => expect(handle?.getEditor(item.id)?.getText()).toBe(multipleChanges.contents));
+  return { editor: handle!.getEditor(item.id)!, view };
+};
+
+test('reverting a change block restores its base lines, auto-saves, and can be undone', async () => {
+  const { editor, view } = await editMultipleChanges();
+  await using _view = view;
+  let reverted = false;
+  await act(async () => {
+    reverted = revertChanges(item.id, { end: 11, side: 'additions', start: 11 });
+  });
+  expect(reverted).toBe(true);
+  const partiallyReverted = multipleChanges.oldContents.replace('b\n', 'B\n');
+  expect(editor.getText()).toBe(partiallyReverted);
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  });
+  expect(window.codiff.saveRepositoryFile).toHaveBeenLastCalledWith(
+    expect.objectContaining({ content: partiallyReverted, path: file.path }),
+  );
+  expect(testStore.get('working-tree', item.id)?.getSnapshot()?.hasChanges).toBe(true);
+
+  // Unchanged lines have nothing to revert.
+  await act(async () => {
+    reverted = revertChanges(item.id, { end: 6, side: 'additions', start: 6 });
+  });
+  expect(reverted).toBe(false);
+
+  await act(async () => editor.undo());
+  expect(editor.getText()).toBe(multipleChanges.contents);
+});
+
+test('the revert shortcut reverts the change at the caret of the focused editor', async () => {
+  vi.spyOn(window.navigator, 'platform', 'get').mockReturnValue('MacIntel');
+  const { editor, view } = await editMultipleChanges();
+  await using _view = view;
+  await act(async () => {
+    editor.focus({ character: 1, lineNumber: 2, preventScroll: true });
+  });
+  expect(editor.getViewState().selections?.[0]?.start).toEqual({ character: 1, line: 1 });
+  const content = handle!
+    .getInstance()!
+    .getRenderedItems()
+    .find(({ id }) => id === item.id)!
+    .element.shadowRoot!.querySelector<HTMLElement>('[data-content]')!;
+  content.setAttribute('contenteditable', 'true');
+  content.tabIndex = 0;
+  content.focus();
+  await act(async () => {
+    const event = new KeyboardEvent('keydown', {
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+      code: 'KeyZ',
+      composed: true,
+      key: 'Ω',
+      metaKey: true,
+    });
+    content.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+  expect(editor.getText()).toBe(multipleChanges.oldContents.replace('k\n', 'K\n'));
+  expect(handle?.getEditor(item.id)).toBe(editor);
+});
 
 test('a failed refresh after Done retains the saved draft for retrying', async () => {
   refresh.mockResolvedValueOnce(false);

@@ -3532,6 +3532,7 @@ export function ReviewCodeView({
     store: codeEditingStore,
   });
 
+  const revertCodeChanges = codeEditing.revertChanges;
   const canEditCodeItem = useCallback(
     (item: CodeViewItem<ReviewAnnotationMetadata>, meta: CodeViewItemMetadata | undefined) =>
       meta != null &&
@@ -3918,7 +3919,12 @@ export function ReviewCodeView({
         lineHoverHighlight: 'both',
         loadDiffFiles,
         onGutterUtilityClick: (range, context) => {
-          if (isReadOnly || context.item.edit) {
+          if (isReadOnly) {
+            return;
+          }
+          if (context.item.edit) {
+            revertCodeChanges(context.item.id, range);
+            codeViewRef.current?.clearSelectedLines();
             return;
           }
           ignoreNextLineSelectionEndRef.current = context.item.type === 'diff';
@@ -4097,6 +4103,7 @@ export function ReviewCodeView({
       onCreateComment,
       onFindDefinitions,
       onLoadSection,
+      revertCodeChanges,
       selectedHeaderItemIds,
       source,
       sourceKey,

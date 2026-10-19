@@ -961,6 +961,7 @@ function createTestContext({
     openFile: 'Mod+Shift+o',
     prevHunk: ['Ctrl+ArrowUp', 'k'],
     prevSearchMatch: 'Shift+Enter',
+    revertChange: 'Mod+Alt+z',
     shortcutsHelp: 'Shift+?',
     submitComment: 'Mod+Enter',
     toggleSidebar: 'Mod+Shift+b',
