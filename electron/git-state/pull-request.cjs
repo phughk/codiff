@@ -26,6 +26,7 @@ const { parseReviewUrl } = require('../review-source.cjs');
  * @typedef {import('../../core/types.ts').PullRequestReviewComment} PullRequestReviewComment
  * @typedef {import('../../core/types.ts').RepositoryState} RepositoryState
  * @typedef {import('../../core/types.ts').ReviewSource} ReviewSource
+ * @typedef {import('../../core/types.ts').PendingPullRequestCommentRequest} PendingPullRequestCommentRequest
  * @typedef {import('../../core/types.ts').SubmitPullRequestCommentRequest} SubmitPullRequestCommentRequest
  * @typedef {import('../../core/types.ts').SubmitPullRequestReviewRequest} SubmitPullRequestReviewRequest
  * @typedef {{owner: string; repo: string}} GitHubRepositoryReference
@@ -698,8 +699,10 @@ const normalizePendingGitHubReviewComment = (comment) => {
   }
   // Pending comments are anchored to the head they were written against and
   // are never outdated from the viewer's point of view.
+  // Only the viewer sees their pending review, so its comments are theirs to
+  // edit or delete.
   const { isOutdated: _isOutdated, ...rest } = normalized;
-  return { ...rest, isPending: true };
+  return { ...rest, canDelete: true, canEdit: true, isPending: true };
 };
 
 /** @param {string} repoRoot @param {PullRequestReference} pullRequest */
@@ -1412,6 +1415,23 @@ const isGitHubValidationError = (error) =>
 const hasPendingPullRequestReview = async (repoRoot, pullRequest) =>
   (await findPendingPullRequestReview(repoRoot, pullRequest)) != null;
 
+/**
+ * @param {string} repoRoot
+ * @param {string} query
+ * @param {Record<string, unknown>} variables
+ */
+const ghGraphql = async (repoRoot, query, variables) => {
+  const response = JSON.parse(
+    await ghApi(repoRoot, ['graphql', '--input', '-'], { query, variables }),
+  );
+  if (Array.isArray(response?.errors) && response.errors.length > 0) {
+    throw new Error(
+      response.errors.map((/** @type {{message?: string}} */ error) => error.message).join('\n'),
+    );
+  }
+  return response?.data;
+};
+
 const ADD_PENDING_REVIEW_THREAD_MUTATION = `mutation($input: AddPullRequestReviewThreadInput!) {
   addPullRequestReviewThread(input: $input) {
     thread {
@@ -1480,18 +1500,10 @@ const createPendingReviewThreadInput = (reviewNodeId, comment) => {
  * @param {PullRequestReviewComment} comment
  */
 const addPendingReviewThread = async (repoRoot, reviewNodeId, comment) => {
-  const response = JSON.parse(
-    await ghApi(repoRoot, ['graphql', '--input', '-'], {
-      query: ADD_PENDING_REVIEW_THREAD_MUTATION,
-      variables: { input: createPendingReviewThreadInput(reviewNodeId, comment) },
-    }),
-  );
-  if (Array.isArray(response?.errors) && response.errors.length > 0) {
-    throw new Error(
-      response.errors.map((/** @type {{message?: string}} */ error) => error.message).join('\n'),
-    );
-  }
-  return response?.data?.addPullRequestReviewThread?.thread?.comments?.nodes?.[0] ?? null;
+  const data = await ghGraphql(repoRoot, ADD_PENDING_REVIEW_THREAD_MUTATION, {
+    input: createPendingReviewThreadInput(reviewNodeId, comment),
+  });
+  return data?.addPullRequestReviewThread?.thread?.comments?.nodes?.[0] ?? null;
 };
 
 /** @param {string} launchPath @param {SubmitPullRequestCommentRequest} request */
@@ -1519,11 +1531,82 @@ const addPendingPullRequestComment = async (launchPath, request) => {
       url: node.author?.url,
     },
     body: node.body || request.comment.body,
+    canDelete: true,
+    canEdit: true,
     id: `github:${node.databaseId}`,
     isPending: true,
     submittedAt: node.createdAt,
     url: node.url,
   };
+};
+
+const UPDATE_PENDING_REVIEW_COMMENT_MUTATION = `mutation($input: UpdatePullRequestReviewCommentInput!) {
+  updatePullRequestReviewComment(input: $input) {
+    pullRequestReviewComment {
+      body
+    }
+  }
+}`;
+
+const DELETE_PENDING_REVIEW_COMMENT_MUTATION = `mutation($input: DeletePullRequestReviewCommentInput!) {
+  deletePullRequestReviewComment(input: $input) {
+    clientMutationId
+  }
+}`;
+
+/**
+ * The GraphQL node id of a comment in the viewer's pending review. Codiff only
+ * keeps the database id, and the pending review is the one place GitHub lists
+ * these comments to their author.
+ *
+ * @param {string} launchPath
+ * @param {PendingPullRequestCommentRequest} request
+ */
+const resolvePendingReviewComment = async (launchPath, request) => {
+  const repoRoot = (await git(launchPath, ['rev-parse', '--show-toplevel'])).trim();
+  const pullRequest = parseGitHubPullRequestUrl(request.source.url);
+  const databaseId = Number(request.commentId.replace(/^github:/, ''));
+  const review = await findPendingPullRequestReview(repoRoot, pullRequest);
+  const pages = review
+    ? JSON.parse(
+        await ghApi(repoRoot, [
+          '--paginate',
+          '--slurp',
+          `repos/${pullRequest.owner}/${pullRequest.repo}/pulls/${pullRequest.number}/reviews/${review.id}/comments?per_page=100`,
+        ]),
+      )
+    : [];
+  const comment = (Array.isArray(pages) ? pages.flat() : []).find(
+    (candidate) => candidate?.id === databaseId,
+  );
+  if (typeof comment?.node_id !== 'string') {
+    throw new Error(
+      'This comment is no longer part of your pending review. Reload the pull request and try again.',
+    );
+  }
+  return { nodeId: comment.node_id, repoRoot };
+};
+
+/**
+ * @param {string} launchPath
+ * @param {PendingPullRequestCommentRequest & {body: string}} request
+ */
+const updatePendingPullRequestComment = async (launchPath, request) => {
+  const body = request.body.trim();
+  if (!body) {
+    throw new Error('A comment needs a body.');
+  }
+  const { nodeId, repoRoot } = await resolvePendingReviewComment(launchPath, request);
+  const data = await ghGraphql(repoRoot, UPDATE_PENDING_REVIEW_COMMENT_MUTATION, {
+    input: { body, pullRequestReviewCommentId: nodeId },
+  });
+  return { body: data?.updatePullRequestReviewComment?.pullRequestReviewComment?.body || body };
+};
+
+/** @param {string} launchPath @param {PendingPullRequestCommentRequest} request */
+const deletePendingPullRequestComment = async (launchPath, request) => {
+  const { nodeId, repoRoot } = await resolvePendingReviewComment(launchPath, request);
+  await ghGraphql(repoRoot, DELETE_PENDING_REVIEW_COMMENT_MUTATION, { input: { id: nodeId } });
 };
 
 /** @param {string} launchPath @param {SubmitPullRequestCommentRequest} request */
@@ -1648,6 +1731,7 @@ module.exports = {
   createPullRequestHistoryFetchRefspecs,
   createPullRequestSection,
   createPullRequestSource,
+  deletePendingPullRequestComment,
   getGhCommand,
   getPullRequestHeadImageSource,
   listPullRequestHistory,
@@ -1666,4 +1750,5 @@ module.exports = {
   selectUnresolvedReviewComments,
   submitPullRequestComment,
   submitPullRequestReview,
+  updatePendingPullRequestComment,
 };

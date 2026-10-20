@@ -934,6 +934,12 @@ export type PullRequestGeneralCommentThread = {
 
 export type PullRequestReviewEvent = 'APPROVE' | 'COMMENT' | 'REQUEST_CHANGES';
 
+/** Addresses a comment in the viewer's pending GitHub review. */
+export type PendingPullRequestCommentRequest = {
+  commentId: string;
+  source: Extract<ReviewSource, { type: 'pull-request' }>;
+};
+
 export type SubmitPullRequestCommentRequest = {
   comment: PullRequestReviewComment;
   /** Add the comment to the viewer's pending review instead of publishing it right away. */

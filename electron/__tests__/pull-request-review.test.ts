@@ -10,34 +10,52 @@ import {
 } from '../../core/__tests__/helpers/resources.ts';
 
 const require = createRequire(import.meta.url);
-const { submitPullRequestComment, submitPullRequestReview } =
-  require('../git-state/pull-request.cjs') as {
-    submitPullRequestComment: (
-      launchPath: string,
-      request: {
-        comment: Record<string, unknown>;
-        pending?: boolean;
-        source: {
-          provider: 'github';
-          type: 'pull-request';
-          url: string;
-        };
-      },
-    ) => Promise<Record<string, unknown>>;
-    submitPullRequestReview: (
-      launchPath: string,
-      request: {
-        body?: string;
-        comments: ReadonlyArray<Record<string, unknown>>;
-        event: 'APPROVE' | 'COMMENT' | 'REQUEST_CHANGES';
-        source: {
-          provider: 'github';
-          type: 'pull-request';
-          url: string;
-        };
-      },
-    ) => Promise<void>;
-  };
+type PullRequestSource = {
+  provider: 'github';
+  type: 'pull-request';
+  url: string;
+};
+
+const {
+  deletePendingPullRequestComment,
+  submitPullRequestComment,
+  submitPullRequestReview,
+  updatePendingPullRequestComment,
+} = require('../git-state/pull-request.cjs') as {
+  deletePendingPullRequestComment: (
+    launchPath: string,
+    request: { commentId: string; source: PullRequestSource },
+  ) => Promise<void>;
+  submitPullRequestComment: (
+    launchPath: string,
+    request: {
+      comment: Record<string, unknown>;
+      pending?: boolean;
+      source: {
+        provider: 'github';
+        type: 'pull-request';
+        url: string;
+      };
+    },
+  ) => Promise<Record<string, unknown>>;
+  submitPullRequestReview: (
+    launchPath: string,
+    request: {
+      body?: string;
+      comments: ReadonlyArray<Record<string, unknown>>;
+      event: 'APPROVE' | 'COMMENT' | 'REQUEST_CHANGES';
+      source: {
+        provider: 'github';
+        type: 'pull-request';
+        url: string;
+      };
+    },
+  ) => Promise<void>;
+  updatePendingPullRequestComment: (
+    launchPath: string,
+    request: { body: string; commentId: string; source: PullRequestSource },
+  ) => Promise<{ body: string }>;
+};
 
 const execFileAsync = promisify(execFile);
 
@@ -207,9 +225,21 @@ process.stdin.on('end', () => {
       writeFileSync(pendingPath, '');
     }
     process.stdout.write(JSON.stringify(pending));
+  } else if (path === 'repos/nkzw-tech/codiff/pulls/12/reviews/5/comments?per_page=100') {
+    process.stdout.write(JSON.stringify([[{ id: 99, node_id: 'PRRC_99' }]]));
   } else if (path === 'repos/nkzw-tech/codiff/pulls/12/reviews/5/events') {
     rmSync(pendingPath, { force: true });
     process.stdout.write('{}');
+  } else if (path === 'graphql' && input.includes('updatePullRequestReviewComment')) {
+    process.stdout.write(JSON.stringify({
+      data: {
+        updatePullRequestReviewComment: {
+          pullRequestReviewComment: { body: JSON.parse(input).variables.input.body },
+        },
+      },
+    }));
+  } else if (path === 'graphql' && input.includes('deletePullRequestReviewComment')) {
+    process.stdout.write('{"data":{"deletePullRequestReviewComment":{"clientMutationId":null}}}');
   } else if (path === 'graphql') {
     process.stdout.write(JSON.stringify({
       data: {
@@ -249,6 +279,7 @@ process.stdin.on('end', () => {
       PATH: `${fakeBin}:${process.env.PATH ?? ''}`,
       SHELL: undefined,
     },
+    pendingPath,
     readCalls,
     repo,
   };
@@ -282,6 +313,8 @@ test('adds comments to a pending GitHub review and submits it', async () => {
       url: 'https://github.com/me',
     },
     body: 'First thought.',
+    canDelete: true,
+    canEdit: true,
     filePath: 'src/app.ts',
     id: 'github:99',
     isPending: true,
@@ -360,4 +393,39 @@ test('adds comments to a pending GitHub review and submits it', async () => {
   );
   expect(eventCalls).toHaveLength(1);
   expect(JSON.parse(eventCalls[0].input)).toEqual({ event: 'COMMENT' });
+});
+
+test('edits and deletes comments in the pending GitHub review', async () => {
+  await using directory = await createTemporaryDirectory('codiff-pull-request-pending-edit-');
+  const { environment, pendingPath, readCalls, repo } = await createFakeGitHubRepository(
+    directory.path,
+  );
+  await using _environment = createTemporaryEnvironment(environment);
+  await writeFile(pendingPath, '');
+
+  const source = {
+    provider: 'github' as const,
+    type: 'pull-request' as const,
+    url: 'https://github.com/nkzw-tech/codiff/pull/12',
+  };
+
+  await expect(
+    updatePendingPullRequestComment(repo, {
+      body: '  Reworded.  ',
+      commentId: 'github:99',
+      source,
+    }),
+  ).resolves.toEqual({ body: 'Reworded.' });
+  await deletePendingPullRequestComment(repo, { commentId: 'github:99', source });
+  await expect(
+    deletePendingPullRequestComment(repo, { commentId: 'github:100', source }),
+  ).rejects.toThrow('no longer part of your pending review');
+
+  const inputs = (await readCalls())
+    .filter((call) => call.args.includes('graphql'))
+    .map((call) => JSON.parse(call.input).variables.input);
+  expect(inputs).toEqual([
+    { body: 'Reworded.', pullRequestReviewCommentId: 'PRRC_99' },
+    { id: 'PRRC_99' },
+  ]);
 });

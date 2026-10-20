@@ -34,6 +34,7 @@ import type {
   SharePlanResult,
   SharedWalkthroughSnapshot,
   ShareWalkthroughResult,
+  PendingPullRequestCommentRequest,
   SubmitPullRequestCommentRequest,
   PullRequestExistingReviewComment,
   SubmitPullRequestReviewRequest,
@@ -57,6 +58,7 @@ declare global {
         request: WalkthroughCommitRequest,
       ) => Promise<WalkthroughCommitResult>;
       decreaseCodeFontSize: () => Promise<void>;
+      deletePendingPullRequestComment: (request: PendingPullRequestCommentRequest) => Promise<void>;
       dismissUpdate: () => Promise<CodiffUpdateStatus>;
       findDefinitions: (request: DefinitionSearchRequest) => Promise<DefinitionSearchResult>;
       getAgentSkillStatus: () => Promise<AgentSkillStatus>;
@@ -131,6 +133,9 @@ declare global {
         request: SubmitPullRequestCommentRequest,
       ) => Promise<PullRequestExistingReviewComment>;
       submitPullRequestReview: (request: SubmitPullRequestReviewRequest) => Promise<void>;
+      updatePendingPullRequestComment: (
+        request: PendingPullRequestCommentRequest & { body: string },
+      ) => Promise<{ body: string }>;
       updateWalkthroughCommitMessage: (
         request: WalkthroughCommitMessageRequest,
       ) => Promise<WalkthroughCommitMessageResult>;

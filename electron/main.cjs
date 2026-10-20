@@ -17,6 +17,7 @@ const {
 } = require('electron');
 const squirrelStartup = require('electron-squirrel-startup');
 const {
+  deletePendingPullRequestComment,
   listRepositoryHistory,
   readDiffImageContent,
   readDiffSectionContent,
@@ -26,6 +27,7 @@ const {
   readWalkthroughRepositoryState,
   submitPullRequestComment,
   submitPullRequestReview,
+  updatePendingPullRequestComment,
   validateRepositoryPath,
 } = require('./git-state.cjs');
 const { attachExternalLinkHandling } = require('./external-links.cjs');
@@ -2035,6 +2037,16 @@ ipcMain.handle('codiff:updateWalkthroughCommitMessage', async (event, request) =
 ipcMain.handle('codiff:submitPullRequestComment', async (event, request) => {
   const repositoryPath = windowRepositories.get(event.sender.id) || getLaunchPath();
   return submitPullRequestComment(repositoryPath, request);
+});
+
+ipcMain.handle('codiff:updatePendingPullRequestComment', async (event, request) => {
+  const repositoryPath = windowRepositories.get(event.sender.id) || getLaunchPath();
+  return updatePendingPullRequestComment(repositoryPath, request);
+});
+
+ipcMain.handle('codiff:deletePendingPullRequestComment', async (event, request) => {
+  const repositoryPath = windowRepositories.get(event.sender.id) || getLaunchPath();
+  return deletePendingPullRequestComment(repositoryPath, request);
 });
 
 ipcMain.handle('codiff:submitPullRequestReview', async (event, request) => {

@@ -75,8 +75,10 @@ export function useAppReviewComments({
     activeReviewCommentDraftRef,
     activeReviewCommentDraftState,
     clearCommentFocus,
+    deleteComment,
     reviewCommentsRef,
     updateActiveReviewCommentDraft,
+    updateComment,
   } = commentDrafts;
 
   const updateCodexReply = useCallback(
@@ -319,6 +321,8 @@ export function useAppReviewComments({
                 ? {
                     author: submittedComment.author,
                     body: submittedComment.body,
+                    ...(submittedComment.canDelete ? { canDelete: true } : {}),
+                    ...(submittedComment.canEdit ? { canEdit: true } : {}),
                     filePath: submittedComment.filePath,
                     id: submittedComment.id,
                     ...(submittedComment.isPending ? { isPending: true } : {}),
@@ -363,6 +367,71 @@ export function useAppReviewComments({
   const submitPendingPullRequestComment = useCallback(
     (commentId: string) => submitComment(commentId, true),
     [submitComment],
+  );
+
+  const getPendingRemoteComment = useCallback(
+    (commentId: string) => {
+      const currentState = stateRef.current;
+      const comment = reviewCommentsRef.current.find((candidate) => candidate.id === commentId);
+      return currentState?.source.type === 'pull-request' &&
+        comment?.isReadOnly &&
+        comment.isPending
+        ? { comment, source: currentState.source }
+        : null;
+    },
+    [reviewCommentsRef, stateRef],
+  );
+
+  const saveCommentEdit = useCallback(
+    async (commentId: string, body: string) => {
+      const pending = getPendingRemoteComment(commentId);
+      if (!pending?.comment.canEdit) {
+        updateComment(commentId, body);
+        return;
+      }
+
+      const result = await window.codiff.updatePendingPullRequestComment({
+        body,
+        commentId,
+        source: pending.source,
+      });
+      setReviewComments((current) =>
+        current.map((candidate) =>
+          candidate.id === commentId ? { ...candidate, body: result.body } : candidate,
+        ),
+      );
+      onCommentFileChange(pending.comment.filePath);
+    },
+    [getPendingRemoteComment, onCommentFileChange, updateComment],
+  );
+
+  const deleteReviewComment = useCallback(
+    (commentId: string) => {
+      const pending = getPendingRemoteComment(commentId);
+      if (!pending?.comment.canDelete) {
+        deleteComment(commentId);
+        return;
+      }
+
+      if (!window.confirm('Delete this pending comment from GitHub? This cannot be undone.')) {
+        return;
+      }
+
+      const { comment, source } = pending;
+      deleteComment(commentId);
+      void window.codiff
+        .deletePendingPullRequestComment({ commentId, source })
+        .catch((error: unknown) => {
+          setReviewComments((current) =>
+            current.some((candidate) => candidate.id === commentId)
+              ? current
+              : [...current, comment],
+          );
+          onCommentFileChange(comment.filePath);
+          window.alert(error instanceof Error ? error.message : String(error));
+        });
+    },
+    [deleteComment, getPendingRemoteComment, onCommentFileChange],
   );
 
   const submitPullRequestReview = useCallback(
@@ -410,7 +479,13 @@ export function useAppReviewComments({
                 return [];
               }
               if (comment.isPending) {
-                const { isPending: _isPending, ...published } = comment;
+                // Editing and deleting are only offered while the comment is pending.
+                const {
+                  canDelete: _canDelete,
+                  canEdit: _canEdit,
+                  isPending: _isPending,
+                  ...published
+                } = comment;
                 return [published];
               }
               return [comment];
@@ -452,12 +527,14 @@ export function useAppReviewComments({
   return {
     ...commentDrafts,
     askCodex,
+    deleteReviewComment,
     getAgentReviewState,
     getReviewSubmitSummary,
     hasPendingReviewComments,
     pullRequestReviewSubmitting,
     reviewComments,
     reviewWithAgent,
+    saveCommentEdit,
     setReviewComments,
     submitPendingPullRequestComment,
     submitPullRequestComment,

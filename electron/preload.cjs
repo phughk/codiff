@@ -158,6 +158,10 @@ const codiff = {
   saveRepositoryFile: (request) => ipcRenderer.invoke('codiff:saveRepositoryFile', request),
   savePlanReview: (review) => ipcRenderer.invoke('codiff:savePlanReview', review),
   showInFolder: (path) => ipcRenderer.invoke('codiff:showInFolder', path),
+  deletePendingPullRequestComment: (request) =>
+    ipcRenderer.invoke('codiff:deletePendingPullRequestComment', request),
+  updatePendingPullRequestComment: (request) =>
+    ipcRenderer.invoke('codiff:updatePendingPullRequestComment', request),
   submitPullRequestComment: (request) =>
     ipcRenderer.invoke('codiff:submitPullRequestComment', request),
   submitPullRequestReview: (request) =>

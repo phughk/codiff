@@ -127,6 +127,7 @@ const createCodiffMock = (overrides: Partial<Window['codiff']> = {}): Window['co
     status: 'committed' as const,
   })),
   decreaseCodeFontSize: vi.fn(async () => {}),
+  deletePendingPullRequestComment: vi.fn(async () => {}),
   dismissUpdate: vi.fn(async () => ({
     currentVersion: '1.9.2',
     phase: 'idle' as const,
@@ -285,6 +286,7 @@ const createCodiffMock = (overrides: Partial<Window['codiff']> = {}): Window['co
     throw new Error('Unexpected pull request comment submit.');
   }),
   submitPullRequestReview: vi.fn(async () => {}),
+  updatePendingPullRequestComment: vi.fn(async ({ body }: { body: string }) => ({ body })),
   updateWalkthroughCommitMessage: vi.fn(async () => ({
     reason: 'Unavailable in tests.',
     status: 'unavailable' as const,

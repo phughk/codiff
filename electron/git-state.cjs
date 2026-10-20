@@ -25,6 +25,7 @@ const {
   createPullRequestHistoryFetchRefspecs,
   createPullRequestSection,
   createPullRequestSource,
+  deletePendingPullRequestComment,
   getPullRequestHeadImageSource,
   listPullRequestHistory,
   normalizeGitHubPullRequestCommit,
@@ -37,6 +38,7 @@ const {
   selectUnresolvedReviewComments,
   submitPullRequestComment,
   submitPullRequestReview,
+  updatePendingPullRequestComment,
 } = require('./git-state/pull-request.cjs');
 const {
   createGitLabPosition,
@@ -231,6 +233,7 @@ module.exports = {
   createMergeRequestFetchRefspecs,
   createPullRequestSection,
   createPullRequestSource,
+  deletePendingPullRequestComment,
   getPullRequestHeadImageSource,
   listRepositoryHistory: readRepositoryHistory,
   normalizeGitHubPullRequestCommit,
@@ -263,5 +266,6 @@ module.exports = {
       launchPath,
       request,
     ),
+  updatePendingPullRequestComment,
   validateRepositoryPath,
 };
