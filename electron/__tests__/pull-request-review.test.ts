@@ -17,15 +17,23 @@ type PullRequestSource = {
 };
 
 const {
+  collectPendingReviewComments,
   deletePendingPullRequestComment,
+  normalizePendingGitHubReviewComment,
   submitPullRequestComment,
   submitPullRequestReview,
   updatePendingPullRequestComment,
 } = require('../git-state/pull-request.cjs') as {
+  collectPendingReviewComments: (
+    threads: ReadonlyArray<Record<string, unknown>>,
+  ) => ReadonlyArray<Record<string, unknown>>;
   deletePendingPullRequestComment: (
     launchPath: string,
     request: { commentId: string; source: PullRequestSource },
   ) => Promise<void>;
+  normalizePendingGitHubReviewComment: (
+    comment: Record<string, unknown>,
+  ) => Record<string, unknown> | null;
   submitPullRequestComment: (
     launchPath: string,
     request: {
@@ -225,11 +233,31 @@ process.stdin.on('end', () => {
       writeFileSync(pendingPath, '');
     }
     process.stdout.write(JSON.stringify(pending));
-  } else if (path === 'repos/nkzw-tech/codiff/pulls/12/reviews/5/comments?per_page=100') {
-    process.stdout.write(JSON.stringify([[{ id: 99, node_id: 'PRRC_99' }]]));
   } else if (path === 'repos/nkzw-tech/codiff/pulls/12/reviews/5/events') {
     rmSync(pendingPath, { force: true });
     process.stdout.write('{}');
+  } else if (path === 'graphql' && args.some((arg) => arg.includes('reviewThreads'))) {
+    const comment = {
+      databaseId: 99,
+      id: 'PRRC_99',
+      line: 4,
+      path: 'src/app.ts',
+      state: 'PENDING',
+    };
+    process.stdout.write(JSON.stringify({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: existsSync(pendingPath)
+                ? [{ comments: { nodes: [comment] }, diffSide: 'LEFT', isResolved: false }]
+                : [],
+              pageInfo: { endCursor: null, hasNextPage: false },
+            },
+          },
+        },
+      },
+    }));
   } else if (path === 'graphql' && input.includes('updatePullRequestReviewComment')) {
     process.stdout.write(JSON.stringify({
       data: {
@@ -422,10 +450,63 @@ test('edits and deletes comments in the pending GitHub review', async () => {
   ).rejects.toThrow('no longer part of your pending review');
 
   const inputs = (await readCalls())
-    .filter((call) => call.args.includes('graphql'))
+    .filter((call) => call.args.includes('graphql') && call.input)
     .map((call) => JSON.parse(call.input).variables.input);
   expect(inputs).toEqual([
     { body: 'Reworded.', pullRequestReviewCommentId: 'PRRC_99' },
     { id: 'PRRC_99' },
+  ]);
+});
+
+test('reads pending comments from review threads with their lines and sides', () => {
+  const pending = collectPendingReviewComments([
+    {
+      comments: {
+        nodes: [
+          { databaseId: 1, line: 3, path: 'src/app.ts', state: 'SUBMITTED' },
+          {
+            author: {
+              avatarUrl: 'https://avatars.example/me',
+              login: 'me',
+              url: 'https://github.com/me',
+            },
+            body: 'Pending thought.',
+            createdAt: '2026-09-28T10:00:00Z',
+            databaseId: 99,
+            id: 'PRRC_99',
+            line: 4,
+            originalLine: 4,
+            originalStartLine: 2,
+            path: 'src/app.ts',
+            startLine: 2,
+            state: 'PENDING',
+            url: 'https://github.com/nkzw-tech/codiff/pull/12#discussion_r99',
+          },
+        ],
+      },
+      diffSide: 'LEFT',
+      startDiffSide: 'LEFT',
+    },
+    { comments: null },
+  ]);
+  expect(pending.map(normalizePendingGitHubReviewComment)).toEqual([
+    {
+      author: {
+        avatarUrl: 'https://avatars.example/me',
+        login: 'me',
+        url: 'https://github.com/me',
+      },
+      body: 'Pending thought.',
+      canDelete: true,
+      canEdit: true,
+      filePath: 'src/app.ts',
+      id: 'github:99',
+      isPending: true,
+      lineNumber: 4,
+      side: 'deletions',
+      startLineNumber: 2,
+      submittedAt: '2026-09-28T10:00:00Z',
+      url: 'https://github.com/nkzw-tech/codiff/pull/12#discussion_r99',
+    },
   ]);
 });

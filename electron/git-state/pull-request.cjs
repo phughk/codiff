@@ -38,7 +38,7 @@ const { parseReviewUrl } = require('../review-source.cjs');
  * @typedef {{base?: {ref?: string; repo?: GitHubRepositoryMetadata | null; sha?: string}; body?: string | null; head?: {ref?: string; repo?: GitHubRepositoryMetadata | null; sha?: string}; title?: string; user?: {avatar_url?: string; html_url?: string; login?: string}}} GitHubPullRequestMetadata
  * @typedef {{author?: {avatar_url?: string}; commit?: {author?: {date?: string; email?: string; name?: string}; message?: string}; parents?: ReadonlyArray<{sha?: string}>; sha?: string}} GitHubCommit
  * @typedef {{[key: string]: any}} GitHubReviewComment
- * @typedef {{comments?: {nodes?: ReadonlyArray<{databaseId?: number | null}>} | null; isResolved?: boolean}} GitHubReviewThread
+ * @typedef {{comments?: {nodes?: ReadonlyArray<{[key: string]: any} | null>} | null; diffSide?: string; isResolved?: boolean; startDiffSide?: string}} GitHubReviewThread
  */
 
 const GH_NOT_FOUND_CODE = 'GH_NOT_FOUND';
@@ -319,6 +319,23 @@ const ghApi = async (repoRoot, args, input) => {
   }
 
   throw new Error(stderr.trim() || `gh api exited with code ${code}.`);
+};
+
+/**
+ * @param {string} repoRoot
+ * @param {string} query
+ * @param {Record<string, unknown>} variables
+ */
+const ghGraphql = async (repoRoot, query, variables) => {
+  const response = JSON.parse(
+    await ghApi(repoRoot, ['graphql', '--input', '-'], { query, variables }),
+  );
+  if (Array.isArray(response?.errors) && response.errors.length > 0) {
+    throw new Error(
+      response.errors.map((/** @type {{message?: string}} */ error) => error.message).join('\n'),
+    );
+  }
+  return response?.data;
 };
 
 /**
@@ -610,17 +627,37 @@ const selectUnresolvedReviewComments = (comments, resolvedCommentIds) =>
     .map(normalizeGitHubReviewComment)
     .filter(Boolean);
 
-const RESOLVED_REVIEW_THREADS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+// Review threads carry the resolved state Codiff hides threads by, and the
+// viewer's pending comments, which only GraphQL returns with their lines and
+// sides. GitHub only shows pending comments to their author.
+const REVIEW_THREADS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
       reviewThreads(first: 100, after: $cursor) {
         nodes {
           comments(first: 100) {
             nodes {
+              author {
+                avatarUrl
+                login
+                url
+              }
+              body
+              createdAt
               databaseId
+              id
+              line
+              originalLine
+              originalStartLine
+              path
+              startLine
+              state
+              url
             }
           }
+          diffSide
           isResolved
+          startDiffSide
         }
         pageInfo {
           endCursor
@@ -631,44 +668,76 @@ const RESOLVED_REVIEW_THREADS_QUERY = `query($owner: String!, $repo: String!, $n
   }
 }`;
 
-/** @param {string} repoRoot @param {PullRequestReference} pullRequest @returns {Promise<Set<number>>} */
-const readResolvedReviewCommentIds = async (repoRoot, pullRequest) => {
-  try {
-    /** @type {Array<GitHubReviewThread>} */
-    const threads = [];
-    /** @type {string | undefined} */
-    let cursor;
-    let hasNextPage = true;
-    while (hasNextPage) {
-      const response = JSON.parse(
-        await ghApi(repoRoot, [
-          'graphql',
-          '-f',
-          `query=${RESOLVED_REVIEW_THREADS_QUERY}`,
-          '-f',
-          `owner=${pullRequest.owner}`,
-          '-f',
-          `repo=${pullRequest.repo}`,
-          '-F',
-          `number=${pullRequest.number}`,
-          ...(cursor ? ['-f', `cursor=${cursor}`] : []),
-        ]),
-      );
-      const reviewThreads = response?.data?.repository?.pullRequest?.reviewThreads;
-      if (!reviewThreads) {
-        break;
-      }
-      if (Array.isArray(reviewThreads.nodes)) {
-        threads.push(...reviewThreads.nodes);
-      }
-      cursor = reviewThreads.pageInfo?.endCursor ?? undefined;
-      hasNextPage = Boolean(reviewThreads.pageInfo?.hasNextPage && cursor);
+/** @param {string} repoRoot @param {PullRequestReference} pullRequest @returns {Promise<Array<GitHubReviewThread>>} */
+const readReviewThreads = async (repoRoot, pullRequest) => {
+  /** @type {Array<GitHubReviewThread>} */
+  const threads = [];
+  /** @type {string | undefined} */
+  let cursor;
+  let hasNextPage = true;
+  while (hasNextPage) {
+    const response = JSON.parse(
+      await ghApi(repoRoot, [
+        'graphql',
+        '-f',
+        `query=${REVIEW_THREADS_QUERY}`,
+        '-f',
+        `owner=${pullRequest.owner}`,
+        '-f',
+        `repo=${pullRequest.repo}`,
+        '-F',
+        `number=${pullRequest.number}`,
+        ...(cursor ? ['-f', `cursor=${cursor}`] : []),
+      ]),
+    );
+    const reviewThreads = response?.data?.repository?.pullRequest?.reviewThreads;
+    if (!reviewThreads) {
+      break;
     }
-    return collectResolvedReviewCommentIds(threads);
-  } catch {
-    return new Set();
+    if (Array.isArray(reviewThreads.nodes)) {
+      threads.push(...reviewThreads.nodes);
+    }
+    cursor = reviewThreads.pageInfo?.endCursor ?? undefined;
+    hasNextPage = Boolean(reviewThreads.pageInfo?.hasNextPage && cursor);
   }
+  return threads;
 };
+
+/**
+ * The viewer's pending comments in the REST shape the rest of Codiff
+ * normalizes, plus their GraphQL node ids.
+ *
+ * @param {ReadonlyArray<GitHubReviewThread>} threads
+ * @returns {Array<GitHubReviewComment>}
+ */
+const collectPendingReviewComments = (threads) =>
+  threads.flatMap((thread) =>
+    (thread?.comments?.nodes ?? []).flatMap((node) =>
+      node?.state === 'PENDING' && typeof node.databaseId === 'number'
+        ? [
+            {
+              body: node.body,
+              created_at: node.createdAt,
+              html_url: node.url,
+              id: node.databaseId,
+              line: node.line,
+              node_id: node.id,
+              original_line: node.originalLine,
+              original_start_line: node.originalStartLine,
+              path: node.path,
+              side: thread.diffSide,
+              start_line: node.startLine,
+              start_side: thread.startDiffSide,
+              user: {
+                avatar_url: node.author?.avatarUrl,
+                html_url: node.author?.url,
+                login: node.author?.login,
+              },
+            },
+          ]
+        : [],
+    ),
+  );
 
 /**
  * The viewer's own pending review. GitHub only lists a pending review to its
@@ -706,41 +775,24 @@ const normalizePendingGitHubReviewComment = (comment) => {
 };
 
 /** @param {string} repoRoot @param {PullRequestReference} pullRequest */
-const readPendingPullRequestReviewComments = async (repoRoot, pullRequest) => {
-  try {
-    const review = await findPendingPullRequestReview(repoRoot, pullRequest);
-    if (!review) {
-      return [];
-    }
-    const pages = JSON.parse(
-      await ghApi(repoRoot, [
-        '--paginate',
-        '--slurp',
-        `repos/${pullRequest.owner}/${pullRequest.repo}/pulls/${pullRequest.number}/reviews/${review.id}/comments?per_page=100`,
-      ]),
-    );
-    return pages.flat().map(normalizePendingGitHubReviewComment).filter(Boolean);
-  } catch {
-    return [];
-  }
-};
-
-/** @param {string} repoRoot @param {PullRequestReference} pullRequest */
 const readPullRequestComments = async (repoRoot, pullRequest) => {
-  const [pages, resolvedCommentIds, pendingComments] = await Promise.all([
+  const [pages, threads] = await Promise.all([
     ghApi(repoRoot, [
       '--paginate',
       '--slurp',
       `repos/${pullRequest.owner}/${pullRequest.repo}/pulls/${pullRequest.number}/comments?per_page=100`,
     ]).then((output) => JSON.parse(output)),
-    readResolvedReviewCommentIds(repoRoot, pullRequest),
-    readPendingPullRequestReviewComments(repoRoot, pullRequest),
+    readReviewThreads(repoRoot, pullRequest).catch(() => []),
   ]);
+  const pendingComments = collectPendingReviewComments(threads)
+    .map(normalizePendingGitHubReviewComment)
+    .filter(Boolean);
   const pendingIds = new Set(pendingComments.map((comment) => comment?.id));
   return [
-    ...selectUnresolvedReviewComments(pages.flat(), resolvedCommentIds).filter(
-      (comment) => !pendingIds.has(comment?.id),
-    ),
+    ...selectUnresolvedReviewComments(
+      pages.flat(),
+      collectResolvedReviewCommentIds(threads),
+    ).filter((comment) => !pendingIds.has(comment?.id)),
     ...pendingComments,
   ];
 };
@@ -1415,23 +1467,6 @@ const isGitHubValidationError = (error) =>
 const hasPendingPullRequestReview = async (repoRoot, pullRequest) =>
   (await findPendingPullRequestReview(repoRoot, pullRequest)) != null;
 
-/**
- * @param {string} repoRoot
- * @param {string} query
- * @param {Record<string, unknown>} variables
- */
-const ghGraphql = async (repoRoot, query, variables) => {
-  const response = JSON.parse(
-    await ghApi(repoRoot, ['graphql', '--input', '-'], { query, variables }),
-  );
-  if (Array.isArray(response?.errors) && response.errors.length > 0) {
-    throw new Error(
-      response.errors.map((/** @type {{message?: string}} */ error) => error.message).join('\n'),
-    );
-  }
-  return response?.data;
-};
-
 const ADD_PENDING_REVIEW_THREAD_MUTATION = `mutation($input: AddPullRequestReviewThreadInput!) {
   addPullRequestReviewThread(input: $input) {
     thread {
@@ -1555,9 +1590,8 @@ const DELETE_PENDING_REVIEW_COMMENT_MUTATION = `mutation($input: DeletePullReque
 }`;
 
 /**
- * The GraphQL node id of a comment in the viewer's pending review. Codiff only
- * keeps the database id, and the pending review is the one place GitHub lists
- * these comments to their author.
+ * The GraphQL node id of a comment in the viewer's pending review, since Codiff
+ * only keeps the database id.
  *
  * @param {string} launchPath
  * @param {PendingPullRequestCommentRequest} request
@@ -1566,18 +1600,8 @@ const resolvePendingReviewComment = async (launchPath, request) => {
   const repoRoot = (await git(launchPath, ['rev-parse', '--show-toplevel'])).trim();
   const pullRequest = parseGitHubPullRequestUrl(request.source.url);
   const databaseId = Number(request.commentId.replace(/^github:/, ''));
-  const review = await findPendingPullRequestReview(repoRoot, pullRequest);
-  const pages = review
-    ? JSON.parse(
-        await ghApi(repoRoot, [
-          '--paginate',
-          '--slurp',
-          `repos/${pullRequest.owner}/${pullRequest.repo}/pulls/${pullRequest.number}/reviews/${review.id}/comments?per_page=100`,
-        ]),
-      )
-    : [];
-  const comment = (Array.isArray(pages) ? pages.flat() : []).find(
-    (candidate) => candidate?.id === databaseId,
+  const comment = collectPendingReviewComments(await readReviewThreads(repoRoot, pullRequest)).find(
+    (candidate) => candidate.id === databaseId,
   );
   if (typeof comment?.node_id !== 'string') {
     throw new Error(
@@ -1724,6 +1748,7 @@ const createPullRequestReviewPayload = (request) => {
 module.exports = {
   GH_NOT_FOUND_CODE,
   PENDING_REVIEW_COMMENT_ERROR,
+  collectPendingReviewComments,
   collectResolvedReviewCommentIds,
   createPatchFromPullRequestFile,
   createPendingPullRequestReviewEventPayload,
