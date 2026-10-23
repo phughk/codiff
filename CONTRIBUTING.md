@@ -29,7 +29,7 @@ for inspiring this policy.
 
 ## Requirements
 
-Codiff uses Node.js 24, pnpm 11, and
+Codiff uses Node.js 24.21.0 or later, pnpm 12, and
 [Vite+](https://viteplus.dev/). Install Vite+ before working in the repository.
 
 You will also need Git. The native application requires a platform supported by

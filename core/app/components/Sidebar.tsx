@@ -1,23 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { matchesShortcut } from '../../config/keymap.ts';
 import type { CodiffKeymap } from '../../config/types.ts';
-import type {
-  DiffLineCount,
-  PullRequestSource,
-  SidebarMode,
-  WalkthroughError,
-} from '../../lib/app-types.ts';
-import {
-  formatLineCountNumber,
-  getDiffLineCount,
-  getDiffLineCountTitle,
-  getTotalDiffLineCount,
-} from '../../lib/diff.ts';
+import type { PullRequestSource, SidebarMode, WalkthroughError } from '../../lib/app-types.ts';
 import { isNativeInputTarget } from '../../lib/keyboard.ts';
 import { getShortRef, getSourceKey } from '../../lib/source.ts';
 import type { ChangedFile, HistoryEntry, NarrativeWalkthrough, ReviewSource } from '../../types.ts';
 import { Avatar } from './Avatar.tsx';
 import { Button } from './Button.tsx';
+import { DiffSummaryFooter } from './DiffSummaryFooter.tsx';
 import { ReviewFileTree } from './FileTree.tsx';
 import { NarrativeSidebar } from './walkthrough/NarrativeSidebar.tsx';
 import type { NarrativeNavigation } from './walkthrough/useNarrativeNavigation.ts';
@@ -49,6 +39,7 @@ export function Sidebar({
   selectedPath,
   shareWalkthroughDisabled,
   showWhitespace,
+  summaryLoading,
   viewed,
   walkthroughError,
   walkthroughLoading,
@@ -79,6 +70,7 @@ export function Sidebar({
   selectedPath: string | null;
   shareWalkthroughDisabled?: boolean;
   showWhitespace: boolean;
+  summaryLoading: boolean;
   viewed: Record<string, string>;
   walkthroughError: WalkthroughError | null;
   walkthroughLoading: boolean;
@@ -89,18 +81,11 @@ export function Sidebar({
   };
 }) {
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const lineCountsByPath = useMemo(
-    () => new Map(files.map((file) => [file.path, getDiffLineCount(file, showWhitespace)])),
-    [files, showWhitespace],
-  );
-  const totalLineCount = useMemo(
-    () => getTotalDiffLineCount(lineCountsByPath.values()),
-    [lineCountsByPath],
-  );
-  const showTotalLineCount = mode !== 'history' && totalLineCount.countable;
   const showCommitButton =
-    mode === 'tree' && currentSource.type === 'working-tree' && commitFiles.length > 0;
-  const showFooter = showTotalLineCount || showCommitButton;
+    !summaryLoading &&
+    mode === 'tree' &&
+    currentSource.type === 'working-tree' &&
+    commitFiles.length > 0;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -186,32 +171,22 @@ export function Sidebar({
           viewed={viewed}
         />
       )}
-      {showFooter ? (
-        <div className="sidebar-total-row">
-          <span className="sidebar-total-summary">
-            {showTotalLineCount ? (
-              <>
-                <span>Total:</span>
-                <DiffLineCountBadge
-                  ariaLabelPrefix="Total change"
-                  className="sidebar-total-line-count"
-                  lineCount={totalLineCount}
-                />
-              </>
-            ) : null}
-          </span>
-          {showCommitButton ? (
-            <Button
-              aria-label={commitViewOpen ? 'Show file tree' : 'Open commit view'}
-              className="sidebar-commit-button"
-              onClick={onToggleCommitView}
-              type="button"
-            >
-              {commitViewOpen ? 'Tree' : 'Commit'}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
+      <DiffSummaryFooter
+        files={mode === 'history' ? commitFiles : files}
+        loading={summaryLoading}
+        showWhitespace={showWhitespace}
+      >
+        {showCommitButton ? (
+          <Button
+            aria-label={commitViewOpen ? 'Show file tree' : 'Open commit view'}
+            className="sidebar-commit-button"
+            onClick={onToggleCommitView}
+            type="button"
+          >
+            {commitViewOpen ? 'Tree' : 'Commit'}
+          </Button>
+        ) : null}
+      </DiffSummaryFooter>
     </>
   );
 }
@@ -504,34 +479,5 @@ function HistorySidebar({
         </div>
       ) : null}
     </div>
-  );
-}
-
-export function DiffLineCountBadge({
-  ariaLabelPrefix,
-  className = 'codiff-line-count',
-  lineCount,
-}: {
-  ariaLabelPrefix?: string;
-  className?: string;
-  lineCount: DiffLineCount;
-}) {
-  if (!lineCount.countable) {
-    return null;
-  }
-
-  const title = getDiffLineCountTitle(lineCount);
-
-  return (
-    <span
-      aria-label={ariaLabelPrefix ? `${ariaLabelPrefix}: ${title}` : title}
-      className={className}
-      title={ariaLabelPrefix ? `${ariaLabelPrefix}: ${title}` : title}
-    >
-      <span className="codiff-line-count-added">+{formatLineCountNumber(lineCount.additions)}</span>
-      <span className="codiff-line-count-deleted">
-        -{formatLineCountNumber(lineCount.deletions)}
-      </span>
-    </span>
   );
 }

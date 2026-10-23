@@ -41,19 +41,19 @@ export const setInputValue = async (
 };
 
 export const waitFor = async (assertion: () => void) => {
-  let lastError: unknown;
+  const deadline = performance.now() + 2000;
 
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  while (true) {
     try {
       assertion();
       return;
     } catch (error) {
-      lastError = error;
+      if (performance.now() >= deadline) {
+        throw error;
+      }
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 10));
       });
     }
   }
-
-  throw lastError;
 };

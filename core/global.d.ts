@@ -90,6 +90,7 @@ declare global {
       installTerminalHelper: () => Promise<TerminalHelperStatus>;
       isWindowFullScreen: () => Promise<boolean>;
       markPlanReady: () => Promise<void>;
+      markWindowReady: () => void;
       onConfigChanged: (callback: (config: CodiffConfig) => void) => () => void;
       onCopyPendingCommentsRequest: (callback: () => string | Promise<string>) => () => void;
       onEditReviewPrompt: (callback: () => void) => () => void;

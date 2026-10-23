@@ -98,10 +98,6 @@ const splitDiffGitHeader = (line) => {
 const stripGitDiffPrefix = (path) =>
   path.startsWith('a/') || path.startsWith('b/') ? path.slice(2) : path;
 
-// Markdown and Graphviz files render previews from their full contents.
-/** @param {string} path */
-const shouldEagerlyReadWorkingTreeContents = (path) => /\.(?:md|dot|gv)$/i.test(path);
-
 /** @param {string} rawPatch @returns {Map<string, {binary: boolean; patch: string}>} */
 const splitPatchByPath = (rawPatch) => {
   const patches = new Map();
@@ -148,14 +144,25 @@ const readPatchMap = async (repoRoot, kind, options = {}) => {
 
 /** @param {string} repoRoot @returns {Promise<Array<StatusItem>>} */
 const listUntrackedItems = async (repoRoot) => {
-  const rawFiles = await git(repoRoot, [
-    'ls-files',
-    '--others',
-    '--exclude-standard',
-    '-z',
-    '--',
-    '.',
-    ...generatedDirectoryPathspecExcludes,
+  const [rawFiles, rawDirectories] = await Promise.all([
+    git(repoRoot, [
+      'ls-files',
+      '--others',
+      '--exclude-standard',
+      '-z',
+      '--',
+      '.',
+      ...generatedDirectoryPathspecExcludes,
+    ]),
+    git(repoRoot, [
+      'ls-files',
+      '--others',
+      '--exclude-standard',
+      '--directory',
+      '-z',
+      '--',
+      ...generatedDirectoryPathspecs,
+    ]),
   ]);
   const paths = rawFiles.split('\0').filter(Boolean).sort();
   /** @type {Array<StatusItem>} */
@@ -184,16 +191,6 @@ const listUntrackedItems = async (repoRoot) => {
     });
   }
 
-  const rawDirectories = await git(repoRoot, [
-    'ls-files',
-    '--others',
-    '--exclude-standard',
-    '--directory',
-    '-z',
-    '--',
-    ...generatedDirectoryPathspecs,
-  ]);
-
   for (const path of rawDirectories.split('\0').filter(Boolean)) {
     items.push({
       directory: true,
@@ -220,31 +217,26 @@ const listUntrackedItems = async (repoRoot) => {
  */
 const readWorkingTreeState = async (launchPath, options = {}) => {
   const repoRoot = (await git(launchPath, ['rev-parse', '--show-toplevel'])).trim();
-  const [trackedStatus, untrackedItems] = await Promise.all([
+  const shouldUsePatchOnly = options.eagerContents === false;
+  const [trackedStatus, untrackedItems, stagedPatches, unstagedPatches] = await Promise.all([
     git(repoRoot, ['status', '--porcelain=v1', '-z', '-uno']),
     listUntrackedItems(repoRoot),
+    shouldUsePatchOnly ? readPatchMap(repoRoot, 'staged', options) : new Map(),
+    shouldUsePatchOnly ? readPatchMap(repoRoot, 'unstaged', options) : new Map(),
   ]);
   const status = [...parseStatus(trackedStatus), ...untrackedItems].sort(fileSort);
-  const shouldUsePatchOnly = options.eagerContents === false;
-  const [stagedPatches, unstagedPatches] = shouldUsePatchOnly
-    ? await Promise.all([
-        readPatchMap(repoRoot, 'staged', options),
-        readPatchMap(repoRoot, 'unstaged', options),
-      ])
-    : [new Map(), new Map()];
   /** @type {Array<ChangedFile>} */
   const files = [];
 
   for (const item of status) {
     /** @type {Array<DiffSection>} */
     const sections = [];
-    const patchOnly = shouldUsePatchOnly && !shouldEagerlyReadWorkingTreeContents(item.path);
 
     if (item.staged) {
       sections.push(
         await createSection(repoRoot, item, 'staged', {
           patch: stagedPatches.get(item.path),
-          patchOnly,
+          patchOnly: shouldUsePatchOnly,
           showWhitespace: options.showWhitespace,
         }),
       );
@@ -254,7 +246,7 @@ const readWorkingTreeState = async (launchPath, options = {}) => {
       sections.push(
         await createSection(repoRoot, item, 'unstaged', {
           patch: item.status === 'conflicted' ? undefined : unstagedPatches.get(item.path),
-          patchOnly,
+          patchOnly: shouldUsePatchOnly,
           showWhitespace: options.showWhitespace,
         }),
       );

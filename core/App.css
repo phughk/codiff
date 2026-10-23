@@ -1347,21 +1347,6 @@ html[data-codiff-platform='darwin'] .sidebar {
   padding: 10px 8px;
 }
 
-.sidebar-settings-bar {
-  align-items: center;
-  border-top: 1px solid var(--sidebar-border);
-  display: flex;
-  flex: none;
-  height: 38px;
-  min-height: 38px;
-  padding: 4px 8px;
-}
-
-.sidebar-settings-line-count {
-  font: 600 11px/1 var(--font-mono);
-  margin-left: auto;
-}
-
 .sidebar-search {
   -webkit-app-region: no-drag;
   background: rgb(127 127 127 / 0.1);
@@ -1384,37 +1369,100 @@ html[data-codiff-platform='darwin'] .sidebar {
   color: var(--muted);
 }
 
-.sidebar-total-row {
-  align-items: center;
+.sidebar-summary-footer {
+  align-items: flex-end;
   border-top: 1px solid var(--sidebar-border);
   color: var(--muted);
   display: flex;
   flex: none;
-  font: 600 11px/1 var(--font-sans);
-  gap: 10px;
-  justify-content: space-between;
-  min-height: 38px;
+  flex-wrap: wrap;
+  font: 600 12px/1.35 var(--font-sans);
+  gap: 8px 10px;
+  margin-top: auto;
+  min-width: 0;
   padding: 8px;
 }
 
-.sidebar-total-summary {
+.sidebar-summary-stats {
   align-items: center;
-  display: inline-flex;
-  gap: 8px;
+  column-gap: 8px;
+  display: grid;
+  grid-template-columns: max-content max-content max-content 12px;
   min-width: 0;
+  row-gap: 8px;
+}
+
+.sidebar-summary-breakdown {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  margin: 0;
+  row-gap: 6px;
+}
+
+.sidebar-summary-breakdown > div {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+
+.sidebar-summary-breakdown dt {
+  color: var(--sidebar-text);
+  font-weight: 500;
+}
+
+.sidebar-summary-breakdown dd {
+  font-family: var(--font-mono);
+  margin: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.sidebar-total-summary {
+  -webkit-app-region: no-drag;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  min-height: 22px;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.sidebar-total-summary:focus-visible {
+  outline: 2px solid var(--tree-selection-focus);
+  outline-offset: 2px;
+}
+
+.summary-chevron.expanded {
+  transform: rotate(180deg);
+}
+
+.sidebar-total-empty {
+  grid-column: 2 / 4;
 }
 
 .sidebar-total-line-count {
-  display: inline-flex;
-  flex: none;
+  display: contents;
+}
+
+.sidebar-total-line-count > span {
   font-family: var(--font-mono);
-  gap: 8px;
+  text-align: right;
   white-space: nowrap;
 }
 
 .sidebar-commit-button {
   flex: none;
   color: var(--sidebar-text);
+  margin-left: auto;
 }
 
 .file-tree-shell,
@@ -1422,6 +1470,10 @@ html[data-codiff-platform='darwin'] .sidebar {
   flex: 1;
   display: block;
   min-height: 0;
+}
+
+.file-tree-shell {
+  overflow: hidden;
 }
 
 .file-tree {
@@ -1439,6 +1491,7 @@ html[data-codiff-platform='darwin'] .sidebar {
 }
 
 .history-entry {
+  flex: none;
   -webkit-app-region: no-drag;
   background: transparent;
   border: 0;
@@ -2525,6 +2578,159 @@ html[data-codiff-platform='darwin'] .sidebar {
   word-break: normal;
 }
 
+.codiff-markdown-change {
+  border-left: 3px solid var(--file-border);
+  margin: 12px -12px 18px;
+  padding: 8px 12px 2px;
+}
+
+.codiff-markdown-change.added {
+  border-color: var(--diff-addition);
+}
+
+.codiff-markdown-change.removed {
+  border-color: var(--diff-deletion);
+}
+
+.codiff-markdown-change-header {
+  align-items: baseline;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 11px;
+  gap: 6px 12px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.codiff-markdown-change.added .codiff-markdown-change-header > span:first-child {
+  color: var(--diff-addition);
+}
+
+.codiff-markdown-change.removed .codiff-markdown-change-header > span:first-child {
+  color: var(--diff-deletion);
+}
+
+.codiff-markdown-source-anchor {
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  margin-left: 8px;
+  padding: 2px 4px;
+}
+
+.codiff-markdown-source-anchor:hover {
+  background: var(--hover-wash);
+  color: var(--text);
+}
+
+.codiff-markdown-insertion,
+.codiff-markdown-source-change .added,
+.codiff-markdown-after {
+  background: color-mix(in srgb, var(--diff-addition) 15%, transparent);
+}
+
+.codiff-markdown-insertion {
+  border-radius: 3px;
+  padding-inline: 2px;
+  text-decoration-color: var(--diff-addition);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.codiff-markdown-deletion,
+.codiff-markdown-source-change .removed,
+.codiff-markdown-before {
+  background: color-mix(in srgb, var(--diff-deletion) 15%, transparent);
+}
+
+.codiff-markdown-deletion {
+  border-radius: 3px;
+  padding-inline: 2px;
+  text-decoration-color: var(--diff-deletion);
+}
+
+.codiff-markdown-before,
+.codiff-markdown-after {
+  border-radius: 6px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+}
+
+.codiff-markdown-preview:not(.editable)
+  :is(.codiff-markdown-before, .codiff-markdown-after)
+  > :last-child {
+  margin-bottom: 0;
+}
+
+.codiff-markdown-attribute-change {
+  border-top: 1px solid var(--file-border);
+  font-size: 12px;
+  margin: 10px 0;
+  padding-top: 8px;
+}
+
+.codiff-markdown-attribute-change > span {
+  color: var(--muted);
+}
+
+.codiff-markdown-attribute-change > div {
+  font-family: var(--font-mono);
+  margin-top: 4px;
+}
+
+.codiff-markdown-unchanged,
+.codiff-markdown-source-change {
+  margin: 12px 0;
+}
+
+.codiff-markdown-unchanged > summary,
+.codiff-markdown-source-change > summary {
+  border-radius: 5px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.codiff-markdown-unchanged > summary {
+  background: color-mix(in srgb, var(--muted) 7%, transparent);
+}
+
+.codiff-markdown-context {
+  opacity: 0.82;
+}
+
+.codiff-markdown-diff img {
+  height: auto;
+  max-width: 100%;
+}
+
+.codiff-markdown-diff table {
+  border-collapse: collapse;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.codiff-markdown-diff :is(td, th) {
+  border: 1px solid var(--file-border);
+  padding: 6px 10px;
+}
+
+.codiff-markdown-preview:not(.editable) .codiff-markdown-source-change pre {
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.codiff-markdown-source-change pre span {
+  display: block;
+}
+
 .codiff-markdown-preview:not(.editable) a {
   color: var(--codiff-link, var(--tree-selection-focus, #3d87f5));
   text-decoration: none;
@@ -2587,28 +2793,6 @@ html[data-codiff-platform='darwin'] .sidebar {
   margin: 0 0 14px;
 }
 
-.codiff-markdown-preview:not(.editable) .codiff-markdown-added {
-  border-radius: 0 6px 6px 0;
-  position: relative;
-}
-
-.codiff-markdown-preview:not(.editable) .codiff-markdown-added::before {
-  background: var(--diff-addition);
-  border-radius: 0;
-  bottom: 0;
-  content: '';
-  left: 0;
-  position: absolute;
-  top: 0;
-  width: 3px;
-}
-
-.codiff-markdown-preview:not(.editable)
-  :is(h1, h2, h3, h4, h5, h6, p, blockquote, pre).codiff-markdown-added {
-  margin-inline: -10px;
-  padding: 6px 10px 6px 14px;
-}
-
 .codiff-markdown-preview:not(.editable) ol,
 .codiff-markdown-preview:not(.editable) ul {
   padding-left: 22px;
@@ -2624,11 +2808,6 @@ html[data-codiff-platform='darwin'] .sidebar {
 
 .codiff-markdown-preview:not(.editable) li::marker {
   color: var(--tree-selection-focus);
-}
-
-.codiff-markdown-preview:not(.editable) :is(ol, ul).codiff-markdown-added {
-  margin-inline: -10px;
-  padding: 6px 10px 6px 34px;
 }
 
 .codiff-markdown-preview:not(.editable) li + li {
@@ -2666,11 +2845,6 @@ html[data-codiff-platform='darwin'] .sidebar {
   overflow: clip;
 }
 
-.codiff-markdown-preview:not(.editable) .codiff-markdown-code-added {
-  margin-inline: -10px;
-  padding-inline: 10px;
-}
-
 .codiff-markdown-preview:not(.editable) code {
   font-family: var(--font-mono);
 }
@@ -2679,11 +2853,6 @@ html[data-codiff-platform='darwin'] .sidebar {
   border: 0;
   border-top: 1px solid var(--file-border);
   margin: 20px 0;
-}
-
-.codiff-markdown-preview:not(.editable) hr.codiff-markdown-added {
-  margin-inline: -10px;
-  padding: 6px 10px;
 }
 
 .codiff-markdown-document-editor,
@@ -4450,6 +4619,20 @@ diffs-container .review-comment-thread {
 .loading.codex,
 .loading.pulse {
   animation: codex-loading-pulse 1600ms ease-in-out infinite;
+}
+
+.startup-loading-message {
+  animation: startup-loading-fade-in 150ms ease-out 250ms both;
+}
+
+@keyframes startup-loading-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .walkthrough-status {

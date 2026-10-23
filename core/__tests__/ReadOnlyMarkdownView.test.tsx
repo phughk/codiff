@@ -9,6 +9,7 @@ import {
   ReadOnlyMarkdownView,
   splitMermaidBlocks,
 } from '../app/components/ReadOnlyMarkdownView.tsx';
+import { MarkdownImageSourceProvider } from '../lib/markdownImageSource.ts';
 import { renderReact, waitFor } from './helpers/react.tsx';
 
 vi.mock('mermaid', () => ({
@@ -186,5 +187,49 @@ test('ReadOnlyMarkdownView renders mermaid diagrams and toggles to source', asyn
   await waitFor(() => {
     expect(view.container.querySelector('.codiff-mermaid-diagram')).toBe(null);
     expect(sourceButton?.getAttribute('aria-pressed')).toBe('true');
+  });
+});
+
+test('ReadOnlyMarkdownView renders image sources through the host resolver', async () => {
+  // jsdom never loads images, so the rendered <img> stays suspended; assert on the resolver.
+  const resolveImageSource = vi.fn((source: string) => `/proxy/${source}`);
+
+  await using _view = await renderReact(
+    <MarkdownImageSourceProvider value={resolveImageSource}>
+      <ReadOnlyMarkdownView
+        ariaLabel="Markdown preview"
+        className="markdown-preview"
+        value={
+          '![top](https://git.test/top.png)\n\n<details><summary>More</summary>\n\n![nested](https://git.test/nested.png)\n\n</details>'
+        }
+        variant="embedded"
+      />
+    </MarkdownImageSourceProvider>,
+  );
+
+  await waitFor(() => {
+    expect(resolveImageSource).toHaveBeenCalledWith('https://git.test/top.png');
+    expect(resolveImageSource).toHaveBeenCalledWith('https://git.test/nested.png');
+  });
+});
+
+test('ReadOnlyMarkdownView resolves images in details summaries', async () => {
+  await using view = await renderReact(
+    <MarkdownImageSourceProvider value={(source) => `/proxy/${source}`}>
+      <ReadOnlyMarkdownView
+        ariaLabel="Markdown preview"
+        className="markdown-preview"
+        value={
+          '<details><summary>![icon](https://git.test/icon.png)</summary>\n\nBody\n\n</details>'
+        }
+        variant="embedded"
+      />
+    </MarkdownImageSourceProvider>,
+  );
+
+  await waitFor(() => {
+    expect(view.container.querySelector('summary img')?.getAttribute('src')).toBe(
+      '/proxy/https://git.test/icon.png',
+    );
   });
 });

@@ -1,5 +1,4 @@
 import type { MarkdownEditorHandle } from '@nkzw/mdx-editor';
-import { frontmatterPlugin, imagePlugin } from '@nkzw/mdx-editor/core';
 import { ArrowSquareOutIcon as ArrowSquareOut } from '@phosphor-icons/react/ArrowSquareOut';
 import { CaretDownIcon as CaretDown } from '@phosphor-icons/react/CaretDown';
 import { ChatCircleIcon as ChatCircle } from '@phosphor-icons/react/ChatCircle';
@@ -41,6 +40,7 @@ import {
   useRef,
   useState,
   type ChangeEvent as ReactChangeEvent,
+  type ComponentProps,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -72,7 +72,7 @@ import {
   DIFF_LINE_HEIGHT,
   diffCollapsedContextThreshold,
   diffContextExpansionLineCount,
-  maxWorkerThreads,
+  getCodeViewWorkerPoolOptions,
   sectionLabel,
   workerHighlighterOptions,
 } from '../../lib/code-view-options.ts';
@@ -86,7 +86,9 @@ import {
   getMarkdownPreviewContents,
   getSectionForFileDiff,
   getVisibleDiffSections,
+  isGraphvizFilePath,
   isMarkdownFilePath,
+  isPatchOnlyDiffSection,
   loadSectionContents,
   shouldLoadDiffSectionContents,
 } from '../../lib/diff.ts';
@@ -142,37 +144,35 @@ import { agentIconUrl } from './agentIcon.ts';
 import { Avatar } from './Avatar.tsx';
 import { Button } from './Button.tsx';
 import { DefinitionPopover } from './DefinitionPopover.tsx';
+import { DiffLineCountBadge } from './DiffLineCountBadge.tsx';
 import { GraphvizDiffPreview } from './GraphvizDiffPreview.tsx';
-import {
-  RepositoryMarkdownEditor,
-  type MarkdownDocumentEditorHandle,
-} from './MarkdownDocumentEditor.tsx';
+import { MarkdownEditor, preloadMarkdownEditor } from './LazyMarkdownEditor.tsx';
+import { MarkdownDiffView } from './MarkdownDiffView.tsx';
+import type { MarkdownDocumentEditorHandle } from './MarkdownDocumentEditor.tsx';
 import { ReadOnlyMarkdownView } from './ReadOnlyMarkdownView.tsx';
 import { ResolvedThreadDisclosure } from './ResolvedThreadDisclosure.tsx';
 import { ScrollLineProgress, type ScrollLineProgressHandle } from './ScrollLineProgress.tsx';
-import { DiffLineCountBadge } from './Sidebar.tsx';
 import { useCopiedState } from './useCopiedState.ts';
 
 const emptyMarkdownPreviewSectionIds = new Set<string>();
 const emptyExpandedReviewKeys = new Set<string>();
-const markdownPreviewPlugins = [
-  frontmatterPlugin(),
-  imagePlugin({
-    disableImageResize: true,
-    disableImageSettingsButton: true,
-  }),
-];
-let markdownEditorModulePromise: Promise<{
-  default: typeof import('@nkzw/mdx-editor').MarkdownEditor;
-}> | null = null;
-const loadMarkdownEditor = () =>
-  (markdownEditorModulePromise ??= import('@nkzw/mdx-editor').then((module) => ({
-    default: module.MarkdownEditor,
-  })));
-const preloadMarkdownEditor = () => {
-  void loadMarkdownEditor();
-};
-const MarkdownEditor = lazy(loadMarkdownEditor);
+let markdownPreviewModule: Promise<typeof import('./MarkdownPreviewDocument.tsx')> | undefined;
+const loadMarkdownPreview = () =>
+  (markdownPreviewModule ??= import('./MarkdownPreviewDocument.tsx'));
+export const preloadReviewMarkdown = () =>
+  Promise.all([loadMarkdownPreview(), preloadMarkdownEditor()]);
+const PreviewDocument = lazy(loadMarkdownPreview);
+function ReadOnlyMarkdown(props: ComponentProps<typeof PreviewDocument>) {
+  return (
+    <Suspense fallback={<div className="codiff-readonly-markdown-loading">Loading…</div>}>
+      <PreviewDocument {...props} />
+    </Suspense>
+  );
+}
+const SourceDescriptionEditor = lazy(() => import('./SourceDescriptionEditor.tsx'));
+const RepositoryMarkdownEditor = lazy(async () => ({
+  default: (await import('./MarkdownDocumentEditor.tsx')).RepositoryMarkdownEditor,
+}));
 
 const isEditableWorkingTreeSection = (
   sourceType: ReviewSource['type'],
@@ -222,7 +222,7 @@ function CopyFilePathButton({ path }: { path: string }) {
   );
 }
 
-function CodeEditButton({
+function FileEditButton({
   disabled,
   isBusy,
   item,
@@ -235,12 +235,12 @@ function CodeEditButton({
   item: CodeViewItem<ReviewAnnotationMetadata>;
   meta: CodeViewItemMetadata;
   onEdit: () => void;
-  onPrepare: ReturnType<typeof useCodeEditing>['prepareEdit'];
+  onPrepare?: ReturnType<typeof useCodeEditing>['prepareEdit'];
 }) {
   useEffect(() => {
     // Headers only mount for rendered items. Warm visible files without loading
     // every file in the review, and surface any preparation failure on click.
-    void onPrepare(item, meta).catch(() => {});
+    void onPrepare?.(item, meta).catch(() => {});
   }, [item, meta, onPrepare]);
 
   return (
@@ -399,7 +399,7 @@ function CodeViewHeader({
           <Button
             aria-pressed={isMarkdownPreview}
             className={`codiff-markdown-button${isMarkdownPreview ? ' active' : ''}`}
-            disabled={isEditing}
+            disabled={isEditing && !isMarkdownPreview}
             onClick={() => onToggleMarkdownPreview(file, section)}
             title={isMarkdownPreview ? 'View as Diff' : 'View as Markdown'}
             type="button"
@@ -501,9 +501,6 @@ const canSubmitComment = (comment: ReviewComment) =>
 const withCommentBody = (comment: ReviewComment, body: string): ReviewComment =>
   comment.body === body ? comment : { ...comment, body };
 
-const getAddedLinesDigest = (lines: ReadonlySet<number>) =>
-  lines.size > 0 ? [...lines].join(',') : '';
-
 const formatBytes = (size: number) => {
   if (size < 1024) {
     return `${size} B`;
@@ -524,19 +521,25 @@ const formatBytes = (size: number) => {
 function MarkdownPreview({
   cacheKey,
   contents,
-  editable,
+  editing,
   heightCache,
+  itemId,
+  oldContents,
   onEditorRef,
   onLayoutReady,
+  onViewSource,
   path,
   sectionId,
 }: {
   cacheKey: string;
   contents: string;
-  editable: boolean;
+  editing: boolean;
   heightCache: Map<string, number>;
+  itemId: string;
+  oldContents?: string;
   onEditorRef: (sectionId: string, editor: MarkdownDocumentEditorHandle | null) => void;
   onLayoutReady: (sectionId: string) => void;
+  onViewSource: (lineNumber: number, side: 'additions' | 'deletions') => void;
   path: string;
   sectionId: string;
 }) {
@@ -582,52 +585,36 @@ function MarkdownPreview({
   return (
     // Keep the last document height while a recycled editor reloads. Measuring
     // its small loading placeholder would move every following item upward.
-    <div style={{ minHeight: ready ? undefined : heightCache.get(cacheKey) }}>
-      <div className={`codiff-markdown-preview${editable ? ' editable' : ''}`} ref={contentRef}>
-        {editable ? (
-          <RepositoryMarkdownEditor
-            onHeightChange={measure}
-            path={path}
-            ref={(editor) => onEditorRef(sectionId, editor)}
-          />
-        ) : (
-          <ReadOnlyMarkdown
-            ariaLabel={`Preview ${path}`}
-            className="codiff-markdown-preview-editor"
-            onHeightChange={measure}
-            value={contents}
-          />
-        )}
+    <div
+      data-codiff-markdown-item={itemId}
+      style={{ minHeight: ready ? undefined : heightCache.get(cacheKey) }}
+    >
+      <div className={`codiff-markdown-preview${editing ? ' editable' : ''}`} ref={contentRef}>
+        <Suspense fallback={<div className="codiff-markdown-editor-message">Loading…</div>}>
+          {editing ? (
+            <RepositoryMarkdownEditor
+              onHeightChange={measure}
+              path={path}
+              ref={(editor) => onEditorRef(sectionId, editor)}
+            />
+          ) : oldContents != null ? (
+            <MarkdownDiffView
+              newContents={contents}
+              oldContents={oldContents}
+              onViewSource={onViewSource}
+              path={path}
+            />
+          ) : (
+            <ReadOnlyMarkdown
+              ariaLabel={`Preview ${path}`}
+              className="codiff-markdown-preview-editor"
+              onHeightChange={measure}
+              value={contents}
+            />
+          )}
+        </Suspense>
       </div>
     </div>
-  );
-}
-
-function ReadOnlyMarkdown({
-  ariaLabel,
-  className,
-  density = 'document',
-  onHeightChange,
-  value,
-  variant = 'plain',
-}: {
-  ariaLabel: string;
-  className: string;
-  density?: 'compact' | 'document';
-  onHeightChange?: (height: number) => void;
-  value: string;
-  variant?: 'embedded' | 'plain';
-}) {
-  return (
-    <ReadOnlyMarkdownView
-      additionalPlugins={markdownPreviewPlugins}
-      ariaLabel={ariaLabel}
-      className={className}
-      density={density}
-      onHeightChange={onHeightChange}
-      value={value}
-      variant={variant}
-    />
   );
 }
 
@@ -878,17 +865,6 @@ function SourceDescriptionBody({
     () => applyDescriptionImages(sanitizedDescription, descriptionImages),
     [descriptionImages, sanitizedDescription],
   );
-  const descriptionEditorPlugins = useMemo(
-    () =>
-      onUploadDescriptionAsset
-        ? [
-            imagePlugin({
-              imageUploadHandler: (file) => Promise.resolve(onUploadDescriptionAsset(file)),
-            }),
-          ]
-        : undefined,
-    [onUploadDescriptionAsset],
-  );
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
   const canSaveEdit =
     editing && !editSubmitting && editDraft.trim() !== displayedDescription.trim();
@@ -1051,8 +1027,7 @@ function SourceDescriptionBody({
                     />
                   ) : null}
                   <div className="review-comment-edit-editor">
-                    <MarkdownEditor
-                      additionalPlugins={descriptionEditorPlugins}
+                    <SourceDescriptionEditor
                       ariaLabel="Edit source description"
                       className="review-comment-markdown-editor general-comment-markdown-editor source-description-markdown-editor"
                       colorScheme="inherit"
@@ -1061,6 +1036,7 @@ function SourceDescriptionBody({
                       onChange={setEditDraft}
                       onHeightChange={() => onLayoutReady(layoutKey)}
                       onKeyDown={handleEditKeyDown}
+                      onUploadAsset={onUploadDescriptionAsset}
                       readOnly={editSubmitting}
                       ref={setEditorRef}
                       spellCheck
@@ -2863,6 +2839,7 @@ export function ReviewCodeView({
   onOpenDefinition,
   onOpenFile,
   onOpenInEditor,
+  onReady,
   onRefreshMarkdown,
   onResolveThread = noopResolveThread,
   onSaveCommentEdit,
@@ -2875,6 +2852,7 @@ export function ReviewCodeView({
   onUpdateSourceDescription,
   onUpdateSourceTitle,
   onUploadSourceDescriptionAsset,
+  renderMarkdownAs = 'preview',
   reviewIdentityByPath,
   scrollTarget,
   searchQuery,
@@ -2930,6 +2908,7 @@ export function ReviewCodeView({
   onOpenDefinition?: (candidate: DefinitionCandidate) => void;
   onOpenFile?: (file: ChangedFile) => void;
   onOpenInEditor?: (path: string, lineNumber?: number) => void;
+  onReady?: () => void;
   onRefreshMarkdown?: (file: ChangedFile, section: DiffSection) => Promise<boolean>;
   onResolveThread?: (threadId: string, resolved: boolean) => Promise<void> | void;
   onSaveCommentEdit: (commentId: string, body: string) => Promise<void> | void;
@@ -2942,6 +2921,7 @@ export function ReviewCodeView({
   onUpdateSourceDescription?: (body: string) => Promise<void> | void;
   onUpdateSourceTitle?: (title: string) => Promise<void> | void;
   onUploadSourceDescriptionAsset?: (file: File) => Promise<string> | string;
+  renderMarkdownAs?: CodiffPreferences['renderMarkdownAs'];
   reviewIdentityByPath?: ReadonlyMap<string, ReviewIdentity>;
   scrollTarget: ReviewScrollTarget | null;
   searchQuery: string;
@@ -3004,24 +2984,26 @@ export function ReviewCodeView({
   );
   const ignoreNextLineSelectionEndRef = useRef(false);
   const navigatedSelectionRef = useRef<CodeViewLineSelection | null>(null);
-  const initialMarkdownFiles =
-    files.length > 0
-      ? files
-      : (blocks?.map((block) => block.file).filter((file): file is ChangedFile => file != null) ??
-        []);
-  const initialEditableMarkdownSections = !isReadOnly
-    ? initialMarkdownFiles.flatMap((file) => {
-        const section = file.sections.at(-1);
-        return section &&
-          isMarkdownFilePath(file.path) &&
-          isEditableWorkingTreeSection(source.type, file, section)
-          ? [section.id]
-          : [];
-      })
-    : [];
-  const [markdownPreviewSections, setMarkdownPreviewSections] = useState<ReadonlySet<string>>(
-    () => new Set([...initialMarkdownPreviewSectionIds, ...initialEditableMarkdownSections]),
+  const [markdownPreviewSections, setMarkdownPreviewSections] = useState<
+    ReadonlyMap<string, boolean>
+  >(() => new Map([...initialMarkdownPreviewSectionIds].map((id) => [id, true])));
+  const [editingMarkdownSections, setEditingMarkdownSections] = useState<ReadonlySet<string>>(
+    () => new Set(),
   );
+  const [finishingMarkdownSections, setFinishingMarkdownSections] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [markdownEditErrors, setMarkdownEditErrors] = useState<
+    Readonly<Record<string, string | undefined>>
+  >({});
+  const [markdownContentsVersion, setMarkdownContentsVersion] = useState(0);
+  const loadingMarkdownPreviews = useRef(new WeakSet<FileDiffMetadata>());
+  const pendingMarkdownSourceRef = useRef<{
+    lineNumber: number;
+    sectionId: string;
+    side: 'additions' | 'deletions';
+    sourceKey: string;
+  } | null>(null);
   // Remeasure only after the preview's actual content height changes. Mounting
   // a loading placeholder must not invalidate a recycled document's layout.
   const [markdownPreviewLayoutPassBySection, setMarkdownPreviewLayoutPassBySection] = useState<
@@ -3236,9 +3218,11 @@ export function ReviewCodeView({
           canRenderMarkdown &&
           !isReadOnly &&
           isEditableWorkingTreeSection(source.type, file, section);
-        const isMarkdownPreview = canRenderMarkdown && markdownPreviewSections.has(section.id);
+        const isMarkdownPreview =
+          canRenderMarkdown &&
+          (markdownPreviewSections.get(section.id) ?? renderMarkdownAs === 'preview');
         const isSelected = block.fileSelected ?? block.selected ?? selectedPath === file.path;
-        const reviewVersionPrefix = `${itemVersionByKey[reviewKey] ?? 0}:${block.id}:${
+        const reviewVersionPrefix = `${isMarkdownFilePath(file.path) ? markdownContentsVersion : 0}:${itemVersionByKey[reviewKey] ?? 0}:${block.id}:${
           reviewIdentity.fingerprint
         }:${reviewKey}:${section.id}:${commentLayoutPassByItem[id] ?? 0}`;
         const sectionStateVersionKey = `${isCollapsed ? 'collapsed' : 'open'}:${
@@ -3396,26 +3380,28 @@ export function ReviewCodeView({
           continue;
         }
         if (isMarkdownPreview) {
-          const markdownPreviewAddedLinesDigest = getAddedLinesDigest(markdownPreview.addedLines);
-          const markdownPreviewLayoutKey = `${section.id}:${markdownPreview.contents.length}:${markdownPreviewAddedLinesDigest}`;
+          const markdownPreviewLayoutKey = `${section.id}:${file.fingerprint}`;
           nextItems.push({
             annotations: getAnnotations(
               id,
               JSON.stringify([
                 markdownPreview.contents,
-                markdownPreviewAddedLinesDigest,
-                canEditMarkdown,
-                fileCommentAnnotations,
+                markdownPreview.oldContents,
+                editingMarkdownSections.has(section.id),
+                [...annotationMap.values()],
               ]),
               [
-                ...fileCommentAnnotations,
+                ...[...annotationMap.values()].map((annotation) => ({
+                  ...annotation,
+                  lineNumber: 1,
+                })),
                 {
                   lineNumber: 1,
                   metadata: {
-                    addedLines: markdownPreview.addedLines,
                     contents: markdownPreview.contents,
-                    editable: canEditMarkdown,
+                    editing: editingMarkdownSections.has(section.id),
                     layoutKey: markdownPreviewLayoutKey,
+                    oldContents: markdownPreview.oldContents,
                     path: file.path,
                     sectionId: section.id,
                     type: 'markdown-preview',
@@ -3428,7 +3414,7 @@ export function ReviewCodeView({
             id,
             type: 'file',
             version: getItemVersion(
-              `${reviewVersionPrefix}:markdown:${sectionStateVersionKey}:${
+              `${reviewVersionPrefix}:markdown:${sectionStateVersionKey}:${editingMarkdownSections.has(section.id)}:${
                 markdownPreviewLayoutKey
               }:${markdownPreviewLayoutPassBySection[section.id] ?? 0}`,
             ),
@@ -3483,7 +3469,10 @@ export function ReviewCodeView({
     itemVersionByKey,
     markdownPreviewLayoutPassBySection,
     markdownPreviewSections,
+    editingMarkdownSections,
+    markdownContentsVersion,
     onLoadImageContent,
+    renderMarkdownAs,
     reviewBlocks,
     selectedPath,
     showWhitespace,
@@ -3555,6 +3544,10 @@ export function ReviewCodeView({
     (item: CodeViewItem<ReviewAnnotationMetadata>, meta: CodeViewItemMetadata) => {
       if (meta.isCollapsed) {
         onToggleCollapsed(meta.file, true, meta.reviewIdentity.key);
+      }
+      if (isMarkdownFilePath(meta.file.path)) {
+        // Keep the text diff while editing, even if `renderMarkdownAs` changes.
+        setMarkdownPreviewSections((current) => new Map(current).set(meta.section.id, false));
       }
       void codeEditing.startEdit(item, meta);
     },
@@ -3807,8 +3800,8 @@ export function ReviewCodeView({
       }
       if (meta.isMarkdownPreview) {
         setMarkdownPreviewSections((current) => {
-          const next = new Set(current);
-          next.delete(meta.section.id);
+          const next = new Map(current);
+          next.set(meta.section.id, false);
           return next;
         });
       }
@@ -4039,8 +4032,34 @@ export function ReviewCodeView({
 
           createCommentForRange(range, context);
         },
-        onPostRender: (node, _instance, _phase, context) => {
+        onPostRender: (node, _instance, phase, context) => {
+          if (phase !== 'unmount') {
+            onReady?.();
+          }
           const metadata = itemMetadata.get(context.item.id);
+          // Load full Markdown and Graphviz files once an item reaches the viewport so diffs can
+          // offer a preview. Fetching every document before startup defeats CodeView's virtualization.
+          if (
+            !isReadOnly &&
+            phase !== 'unmount' &&
+            onLoadSectionContents &&
+            context.item.type === 'diff' &&
+            metadata &&
+            !metadata.isCollapsed &&
+            (isMarkdownFilePath(metadata.file.path) || isGraphvizFilePath(metadata.file.path)) &&
+            isPatchOnlyDiffSection(metadata.section) &&
+            metadata.section.summary?.canLoad !== false &&
+            !loadingMarkdownPreviews.current.has(context.item.fileDiff)
+          ) {
+            loadingMarkdownPreviews.current.add(context.item.fileDiff);
+            // Retry a failed load once; if it fails again, the file stays a text diff.
+            const load = () =>
+              loadSectionContents(metadata.file, metadata.section, onLoadSectionContents);
+            void load()
+              .catch(() => load())
+              .then(() => setMarkdownContentsVersion((version) => version + 1))
+              .catch(() => {});
+          }
           const isWalkthroughHeaderItem = context.item.id.endsWith(':walkthrough-header');
           node.classList.toggle('codiff-walkthrough-header-item', isWalkthroughHeaderItem);
           node.classList.toggle(
@@ -4081,6 +4100,7 @@ export function ReviewCodeView({
         },
         overflow: wordWrap ? 'wrap' : 'scroll',
         parseDiffOptions: getDiffParseOptions(showWhitespace),
+        preferredHighlighter: workerHighlighterOptions.preferredHighlighter,
         stickyHeaders: true,
         theme: {
           dark: 'Dunkel',
@@ -4106,6 +4126,8 @@ export function ReviewCodeView({
       onFindDefinitions,
       onLoadSection,
       revertCodeChanges,
+      onLoadSectionContents,
+      onReady,
       selectedHeaderItemIds,
       showWhitespace,
       source,
@@ -4203,11 +4225,45 @@ export function ReviewCodeView({
     [],
   );
 
+  const finishMarkdownEdit = useCallback(
+    async (meta: CodeViewItemMetadata) => {
+      const sectionId = meta.section.id;
+      setFinishingMarkdownSections((current) => new Set(current).add(sectionId));
+      setMarkdownEditErrors((current) => ({ ...current, [sectionId]: undefined }));
+      try {
+        const editor = markdownEditorRefs.current.get(sectionId);
+        if (editor && !(await editor.flush())) {
+          return;
+        }
+        if (onRefreshMarkdown && !(await onRefreshMarkdown(meta.file, meta.section))) {
+          return;
+        }
+        setEditingMarkdownSections((current) => {
+          const next = new Set(current);
+          next.delete(sectionId);
+          return next;
+        });
+      } catch (error: unknown) {
+        setMarkdownEditErrors((current) => ({
+          ...current,
+          [sectionId]: error instanceof Error ? error.message : String(error),
+        }));
+      } finally {
+        setFinishingMarkdownSections((current) => {
+          const next = new Set(current);
+          next.delete(sectionId);
+          return next;
+        });
+      }
+    },
+    [onRefreshMarkdown],
+  );
+
   const toggleMarkdownPreview = useCallback(
     async (file: ChangedFile, section: DiffSection) => {
       clearCommentLineHighlight();
       if (
-        markdownPreviewSections.has(section.id) &&
+        (markdownPreviewSections.get(section.id) ?? renderMarkdownAs === 'preview') &&
         isEditableWorkingTreeSection(source.type, file, section)
       ) {
         if (refreshingMarkdownSectionsRef.current.has(section.id)) {
@@ -4219,7 +4275,7 @@ export function ReviewCodeView({
           if (editor && !(await editor.flush())) {
             return;
           }
-          if (onRefreshMarkdown && !(await onRefreshMarkdown(file, section))) {
+          if (editor && onRefreshMarkdown && !(await onRefreshMarkdown(file, section))) {
             return;
           }
         } finally {
@@ -4227,16 +4283,23 @@ export function ReviewCodeView({
         }
       }
       setMarkdownPreviewSections((current) => {
+        const next = new Map(current);
+        next.set(section.id, !(current.get(section.id) ?? renderMarkdownAs === 'preview'));
+        return next;
+      });
+      setEditingMarkdownSections((current) => {
         const next = new Set(current);
-        if (next.has(section.id)) {
-          next.delete(section.id);
-        } else {
-          next.add(section.id);
-        }
+        next.delete(section.id);
         return next;
       });
     },
-    [clearCommentLineHighlight, markdownPreviewSections, onRefreshMarkdown, source.type],
+    [
+      clearCommentLineHighlight,
+      markdownPreviewSections,
+      onRefreshMarkdown,
+      renderMarkdownAs,
+      source.type,
+    ],
   );
 
   const toggleGraphPreview = useCallback(
@@ -4255,19 +4318,36 @@ export function ReviewCodeView({
     [clearCommentLineHighlight],
   );
 
-  const workerPoolOptions = useMemo(
-    () => ({
-      poolSize: Math.min(
-        maxWorkerThreads,
-        Math.max(1, navigator.hardwareConcurrency || maxWorkerThreads),
-      ),
-      workerFactory: () =>
-        new Worker(new URL('@pierre/diffs/worker/worker.js', import.meta.url), {
-          type: 'module',
-        }),
-    }),
-    [],
-  );
+  useEffect(() => {
+    const target = pendingMarkdownSourceRef.current;
+    if (!target) {
+      return;
+    }
+    if (target.sourceKey !== sourceKey) {
+      pendingMarkdownSourceRef.current = null;
+      return;
+    }
+    const item = items.find(
+      (item) => item.type === 'diff' && itemMetadata.get(item.id)?.section.id === target.sectionId,
+    );
+    if (!item) {
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      codeViewRef.current?.scrollTo({
+        align: 'center',
+        behavior: 'instant',
+        id: item.id,
+        lineNumber: target.lineNumber,
+        side: target.side,
+        type: 'line',
+      });
+      pendingMarkdownSourceRef.current = null;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [itemMetadata, items, sourceKey]);
+
+  const workerPoolOptions = useMemo(() => getCodeViewWorkerPoolOptions(), []);
 
   const requestScrollTargetIntoView = useCallback(
     (
@@ -4327,6 +4407,13 @@ export function ReviewCodeView({
     if (!itemId) {
       return;
     }
+    const meta = itemMetadata.get(itemId);
+    if (commentTarget?.lineNumber != null && meta?.isMarkdownPreview) {
+      const frame = requestAnimationFrame(
+        () => void toggleMarkdownPreview(meta.file, meta.section),
+      );
+      return () => cancelAnimationFrame(frame);
+    }
 
     let frame: number | null = null;
     let attempts = 0;
@@ -4360,8 +4447,10 @@ export function ReviewCodeView({
     commentTargetById,
     firstItemByBlockId,
     firstItemByPath,
+    itemMetadata,
     requestScrollTargetIntoView,
     scrollTarget,
+    toggleMarkdownPreview,
   ]);
 
   useEffect(() => {
@@ -4411,6 +4500,32 @@ export function ReviewCodeView({
       }
 
       const meta = itemMetadata.get(item.id);
+      if (meta?.isMarkdownPreview && !meta.isCollapsed && codeViewElement) {
+        const preview = [
+          ...codeViewElement.querySelectorAll<HTMLElement>('[data-codiff-markdown-item]'),
+        ].find((element) => element.dataset.codiffMarkdownItem === item.id);
+        const changes = preview?.querySelectorAll<HTMLElement>('[data-markdown-change]');
+        if (changes?.length) {
+          for (const [index, change] of [...changes].entries()) {
+            const position = Math.max(
+              0,
+              viewer.getScrollTop() +
+                change.getBoundingClientRect().top -
+                codeViewElement.getBoundingClientRect().top -
+                headerHeight -
+                DEFAULT_PADDING,
+            );
+            push({
+              itemId: item.id,
+              key: `markdown:${item.id}:${index}`,
+              scrollTarget: { behavior: 'smooth-auto', position, type: 'position' },
+              selection: null,
+              top: position,
+            });
+          }
+          continue;
+        }
+      }
       // Collapsed files and non-diff previews (markdown/image) jump to the header.
       if (!meta || meta.isCollapsed || item.type !== 'diff') {
         push({
@@ -4552,6 +4667,7 @@ export function ReviewCodeView({
     handle.scrollTo(target.scrollTarget);
   }, [
     clearCommentLineHighlight,
+    codeViewElement,
     diffLineHeight,
     diffStyle,
     headerHeight,
@@ -4758,6 +4874,13 @@ export function ReviewCodeView({
     if (!handle || !viewer || !resolvedActiveSearchMatch) {
       return;
     }
+    const meta = itemMetadata.get(resolvedActiveSearchMatch.itemId);
+    if (resolvedActiveSearchMatch.lineNumber != null && meta?.isMarkdownPreview) {
+      const frame = requestAnimationFrame(
+        () => void toggleMarkdownPreview(meta.file, meta.section),
+      );
+      return () => cancelAnimationFrame(frame);
+    }
 
     // Walkthrough blocks re-resolve the match into a fresh object whenever the
     // rendered items change, e.g. when opening a comment. Only scroll when the
@@ -4796,7 +4919,13 @@ export function ReviewCodeView({
     }
 
     scheduleSearchHighlights();
-  }, [activeSearchMatch, resolvedActiveSearchMatch, scheduleSearchHighlights]);
+  }, [
+    activeSearchMatch,
+    itemMetadata,
+    resolvedActiveSearchMatch,
+    scheduleSearchHighlights,
+    toggleMarkdownPreview,
+  ]);
 
   // Rendered as a non-virtualized element at the top of the CodeView scroll
   // content. Height changes (async markdown layout, editing) are re-measured
@@ -4858,12 +4987,18 @@ export function ReviewCodeView({
   const renderCustomHeader = useCallback(
     (item: CodeViewItem<ReviewAnnotationMetadata>) => {
       const editSession = codeEditing.sessions.get(item.id);
-      const isEditing = editSession != null;
       const meta = editSession?.metadata ?? itemMetadata.get(item.id);
-      const isBusy = codeEditing.isBusy(item.id);
+      const canEditMarkdown = meta?.isMarkdownPreview === true && meta.canEditMarkdown;
+      const isEditingMarkdown = canEditMarkdown && editingMarkdownSections.has(meta.section.id);
+      const isEditing = editSession != null || isEditingMarkdown;
+      const isBusy =
+        codeEditing.isBusy(item.id) ||
+        (canEditMarkdown && finishingMarkdownSections.has(meta.section.id));
       const isAutosaving = editSession?.saving && !isBusy;
-      const canEdit = canEditCodeItem(item, meta);
-      const editError = codeEditing.getError(item.id);
+      const canEdit = canEditMarkdown || canEditCodeItem(item, meta);
+      const editError = canEditMarkdown
+        ? markdownEditErrors[meta.section.id]
+        : codeEditing.getError(item.id);
       return meta ? (
         <>
           <CodeViewHeader
@@ -4872,27 +5007,33 @@ export function ReviewCodeView({
             editActions={
               isEditing ? (
                 <>
-                  <Button
-                    aria-label={`${editSession?.hasChanges ? 'Revert edits to' : 'Cancel editing'} ${meta.file.path}`}
-                    className="codiff-edit-revert-button"
-                    data-autosaving={isAutosaving ? '' : undefined}
-                    disabled={isBusy || editSession.saving}
-                    onClick={() => void codeEditing.revertEdit(item.id)}
-                    title={
-                      editSession?.hasChanges
-                        ? 'Restore the file to when editing started'
-                        : 'Cancel editing'
-                    }
-                    type="button"
-                    variant={editSession?.hasChanges ? 'destructive' : 'default'}
-                  >
-                    {editSession?.hasChanges ? 'Revert' : 'Cancel'}
-                  </Button>
+                  {editSession ? (
+                    <Button
+                      aria-label={`${editSession?.hasChanges ? 'Revert edits to' : 'Cancel editing'} ${meta.file.path}`}
+                      className="codiff-edit-revert-button"
+                      data-autosaving={isAutosaving ? '' : undefined}
+                      disabled={isBusy || editSession.saving}
+                      onClick={() => void codeEditing.revertEdit(item.id)}
+                      title={
+                        editSession?.hasChanges
+                          ? 'Restore the file to when editing started'
+                          : 'Cancel editing'
+                      }
+                      type="button"
+                      variant={editSession?.hasChanges ? 'destructive' : 'default'}
+                    >
+                      {editSession?.hasChanges ? 'Revert' : 'Cancel'}
+                    </Button>
+                  ) : null}
                   <Button
                     aria-label={`Done editing ${meta.file.path}`}
                     data-autosaving={isAutosaving ? '' : undefined}
-                    disabled={isBusy || editSession.saving}
-                    onClick={() => void codeEditing.doneEdit(item.id)}
+                    disabled={isBusy || editSession?.saving}
+                    onClick={() =>
+                      void (isEditingMarkdown
+                        ? finishMarkdownEdit(meta)
+                        : codeEditing.doneEdit(item.id))
+                    }
                     title="Finish editing; changes are saved automatically"
                     type="button"
                   >
@@ -4901,13 +5042,32 @@ export function ReviewCodeView({
                   </Button>
                 </>
               ) : canEdit ? (
-                <CodeEditButton
+                <FileEditButton
                   disabled={!codeEditing.canStartEdit(item.id, meta.file.path)}
                   isBusy={isBusy}
                   item={item}
                   meta={meta}
-                  onEdit={() => startCodeEdit(item, meta)}
-                  onPrepare={codeEditing.prepareEdit}
+                  onEdit={() => {
+                    if (canEditMarkdown) {
+                      setMarkdownEditErrors((current) => ({
+                        ...current,
+                        [meta.section.id]: undefined,
+                      }));
+                      setEditingMarkdownSections((current) =>
+                        new Set(current).add(meta.section.id),
+                      );
+                      // Keep the preview while editing, even if `renderMarkdownAs` changes.
+                      setMarkdownPreviewSections((current) =>
+                        new Map(current).set(meta.section.id, true),
+                      );
+                      if (meta.isCollapsed) {
+                        onToggleCollapsed(meta.file, true, meta.reviewIdentity.key);
+                      }
+                    } else {
+                      startCodeEdit(item, meta);
+                    }
+                  }}
+                  onPrepare={canEditMarkdown ? undefined : codeEditing.prepareEdit}
                 />
               ) : null
             }
@@ -4937,9 +5097,13 @@ export function ReviewCodeView({
       canEditCodeItem,
       createFileComment,
       codeEditing,
+      editingMarkdownSections,
+      finishingMarkdownSections,
+      finishMarkdownEdit,
       itemMetadata,
       isReadOnly,
       loadingSectionIds,
+      markdownEditErrors,
       onLoadSection,
       onOpenFile,
       onToggleCollapsed,
@@ -4955,6 +5119,7 @@ export function ReviewCodeView({
       annotation:
         | DiffLineAnnotation<ReviewAnnotationMetadata>
         | LineAnnotation<ReviewAnnotationMetadata>,
+      _fileOrDiff: unknown,
       item: CodeViewItem<ReviewAnnotationMetadata>,
     ) => {
       if (annotation.metadata.type === 'image-preview') {
@@ -4982,14 +5147,28 @@ export function ReviewCodeView({
       }
 
       if (annotation.metadata.type === 'markdown-preview') {
+        const metadata = annotation.metadata;
         return (
           <MarkdownPreview
             cacheKey={`${sourceKey}:${item.id}`}
             contents={annotation.metadata.contents}
-            editable={annotation.metadata.editable}
+            editing={metadata.editing}
             heightCache={markdownPreviewHeights}
+            itemId={item.id}
+            oldContents={metadata.oldContents}
             onEditorRef={setMarkdownEditorRef}
             onLayoutReady={markMarkdownPreviewLayoutReady}
+            onViewSource={(lineNumber, side) => {
+              pendingMarkdownSourceRef.current = {
+                lineNumber,
+                sectionId: metadata.sectionId,
+                side,
+                sourceKey,
+              };
+              setMarkdownPreviewSections((current) =>
+                new Map(current).set(metadata.sectionId, false),
+              );
+            }}
             path={annotation.metadata.path}
             sectionId={annotation.metadata.sectionId}
           />

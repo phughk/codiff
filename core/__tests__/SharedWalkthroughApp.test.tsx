@@ -651,10 +651,10 @@ test('shared walkthroughs switch between walkthrough and tree review modes', asy
     expect(container.querySelector('.file-tree-shell')).not.toBeNull();
     expect(container.querySelector('.walkthrough-list')).toBeNull();
   });
-  expect(container.querySelector('.codiff-markdown-preview')).toBeNull();
+  expect(container.querySelector('.codiff-markdown-diff')).not.toBeNull();
   expect(
     [...container.querySelectorAll<HTMLButtonElement>('button')].some(
-      ({ textContent }) => textContent === 'View as Markdown',
+      ({ textContent }) => textContent === 'View as Diff',
     ),
   ).toBe(true);
   expect(tabs[0]?.getAttribute('aria-selected')).toBe('false');
@@ -777,7 +777,8 @@ test('shared walkthroughs initially preview Markdown when other files are genera
   await waitFor(() => {
     const preview = container.querySelector('.codiff-markdown-preview');
     expect(preview).not.toBeNull();
-    expect(preview?.textContent).toContain('Shared Markdown');
+    expect(preview?.querySelector('h1 ins')?.textContent).toBe('Shared');
+    expect(preview?.querySelector('h1 del')?.textContent).toBe('Old');
     expect(preview?.textContent).toContain('Rendered in the shared walkthrough.');
   });
   const diffButton = [...container.querySelectorAll<HTMLButtonElement>('button')].find(

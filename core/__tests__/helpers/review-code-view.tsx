@@ -15,6 +15,7 @@ const codeViewMockState = vi.hoisted(() => ({
   renderCount: 0,
   renderedElements: new Map<string, HTMLElement>(),
   scrollTo: vi.fn(),
+  unrenderedItemIds: new Set<string>(),
 }));
 export const codeViewMock = codeViewMockState;
 
@@ -26,6 +27,7 @@ export const resetCodeViewMock = () => {
   codeViewMock.renderedElements.clear();
   codeViewMock.renderCount = 0;
   codeViewMock.scrollTo.mockClear();
+  codeViewMock.unrenderedItemIds.clear();
 };
 
 vi.mock('@pierre/diffs/react', async () => {
@@ -48,6 +50,7 @@ vi.mock('@pierre/diffs/react', async () => {
         };
         renderAnnotation?: (
           annotation: { metadata: unknown },
+          fileOrDiff: unknown,
           item: CodeViewItem<unknown>,
         ) => React.ReactNode;
         renderCodeViewHeader?: () => React.ReactNode;
@@ -68,6 +71,9 @@ vi.mock('@pierre/diffs/react', async () => {
         codeViewMock.lastOptions = props.options ?? null;
         codeViewMock.postRenderNodes.length = props.items.length;
         props.items.forEach((item, index) => {
+          if (codeViewMock.unrenderedItemIds.has(item.id)) {
+            return;
+          }
           const node = codeViewMock.postRenderNodes[index] ?? document.createElement('div');
           codeViewMock.postRenderNodes[index] = node;
           props.options?.onPostRender?.(node, {}, 'update', { item });
@@ -132,6 +138,9 @@ vi.mock('@pierre/diffs/react', async () => {
             )
           : null,
         props.items.map((item) => {
+          if (codeViewMock.unrenderedItemIds.has(item.id)) {
+            return null;
+          }
           const customHeader = props.renderCustomHeader?.(item);
           return React.createElement(
             'div',
@@ -146,7 +155,11 @@ vi.mock('@pierre/diffs/react', async () => {
                   React.createElement(
                     React.Fragment,
                     { key: index },
-                    props.renderAnnotation?.(annotation, item),
+                    props.renderAnnotation?.(
+                      annotation,
+                      'fileDiff' in item ? item.fileDiff : item.file,
+                      item,
+                    ),
                   ),
                 )
               : null,

@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="linear-gradient-1" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fffaf0" />
+      <stop offset="0.5" stop-color="#f7eedf" />
+      <stop offset="1" stop-color="#e9ddc8" />
+    </linearGradient>
+    <linearGradient id="linear-gradient-2" x1="18" y1="18" x2="18" y2="318" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.75" />
+      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="linear-gradient-3" x1="18" y1="706" x2="18" y2="1006" gradientUnits="userSpaceOnUse">
+      <stop offset="0.3" stop-color="#c0ac87" stop-opacity="0" />
+      <stop offset="1" stop-color="#c0ac87" stop-opacity="0.28" />
+    </linearGradient>
+    <linearGradient id="linear-gradient-4" x1="1.5" y1="1.5" x2="1.5" y2="1022.5" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#eee0c7" />
+      <stop offset="1" stop-color="#d3bd9b" />
+    </linearGradient>
+    <radialGradient id="radial-gradient-1" cx="0" cy="0" r="400" gradientTransform="matrix(1 0 0 0.95 560 542)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9aafd9" stop-opacity="0.7" />
+      <stop offset="0.6" stop-color="#9aafd9" stop-opacity="0.18" />
+      <stop offset="1" stop-color="#9aafd9" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="linear-gradient-5" x1="170.795" y1="264.725" x2="280.193" y2="885.153" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f7c8a5" />
+      <stop offset="0.5" stop-color="#eaa274" />
+      <stop offset="1" stop-color="#c57c58" />
+    </linearGradient>
+    <linearGradient id="linear-gradient-6" x1="250.421" y1="213.244" x2="305.329" y2="840.847" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#cfddfa" />
+      <stop offset="0.5" stop-color="#a5bbee" />
+      <stop offset="1" stop-color="#768ed3" />
+    </linearGradient>
+    <linearGradient id="linear-gradient-7" x1="332" y1="164" x2="332" y2="794" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fffffd" />
+      <stop offset="0.45" stop-color="#f6f8ff" />
+      <stop offset="1" stop-color="#e3e9f8" />
+    </linearGradient>
+    <linearGradient id="linear-gradient-8" x1="792" y1="164" x2="672" y2="284" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fffefd" />
+      <stop offset="0.55" stop-color="#f0f3ff" />
+      <stop offset="1" stop-color="#c8d5ed" />
+    </linearGradient>
+    <linearGradient id="linear-gradient-9" x1="436" y1="334.7" x2="436" y2="570.7" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4f79df" />
+      <stop offset="1" stop-color="#294fac" />
+    </linearGradient>
+    <linearGradient id="linear-gradient-10" x1="436" y1="606.4" x2="436" y2="664.4" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4f79df" />
+      <stop offset="1" stop-color="#294fac" />
+    </linearGradient>
+    <linearGradient id="linear-gradient-highlight" x1="380" y1="164" x2="380" y2="174" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="1" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <title>Codiff — Porcelain &amp; cobalt</title>
+  <g id="Background">
+    <path d="M232 0 L792 0 C920.13 0 1024 103.87 1024 232 L1024 792 C1024 920.13 920.13 1024 792 1024 L232 1024 C103.87 1024 0 920.13 0 792 L0 232 C0 103.87 103.87 0 232 0 Z" fill="url(#linear-gradient-1)" />
+    <path d="M232 18 L792 18 C910.189 18 1006 85.157 1006 168 L1006 168 C1006 250.843 910.189 318 792 318 L232 318 C113.811 318 18 250.843 18 168 L18 168 C18 85.157 113.811 18 232 18 Z" fill="url(#linear-gradient-2)" />
+    <path d="M232 706 L792 706 C910.189 706 1006 773.157 1006 856 L1006 856 C1006 938.843 910.189 1006 792 1006 L232 1006 C113.811 1006 18 938.843 18 856 L18 856 C18 773.157 113.811 706 232 706 Z" fill="url(#linear-gradient-3)" />
+    <path d="M232 20 L792 20 C909.084 20 1004 114.916 1004 232 L1004 792 C1004 909.084 909.084 1004 792 1004 L232 1004 C114.916 1004 20 909.084 20 792 L20 232 C20 114.916 114.916 20 232 20 Z" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="40" />
+    <path d="M232 14 L792 14 C912.398 14 1010 111.602 1010 232 L1010 792 C1010 912.398 912.398 1010 792 1010 L232 1010 C111.602 1010 14 912.398 14 792 L14 232 C14 111.602 111.602 14 232 14 Z" fill="none" stroke="#ffffff" stroke-opacity="0.14" stroke-width="28" />
+    <path d="M232 9 L792 9 C915.159 9 1015 108.84 1015 232 L1015 792 C1015 915.159 915.159 1015 792 1015 L232 1015 C108.84 1015 9 915.159 9 792 L9 232 C9 108.84 108.84 9 232 9 Z" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="16" />
+    <path d="M232 6 L792 6 C916.816 6 1018 107.184 1018 232 L1018 792 C1018 916.816 916.816 1018 792 1018 L232 1018 C107.184 1018 6 916.816 6 792 L6 232 C6 107.184 107.184 6 232 6 Z" fill="none" stroke="#ffffff" stroke-opacity="0.6" stroke-width="7" />
+    <path d="M232 5 L792 5 C917.369 5 1019 106.631 1019 232 L1019 792 C1019 917.369 917.369 1019 792 1019 L232 1019 C106.631 1019 5 917.369 5 792 L5 232 C5 106.631 106.631 5 232 5 Z" fill="none" stroke="#ffffff" stroke-opacity="0.95" stroke-width="2.5" />
+    <path d="M231.5 1.5 L792.5 1.5 C919.526 1.5 1022.5 104.475 1022.5 231.5 L1022.5 792.5 C1022.5 919.526 919.526 1022.5 792.5 1022.5 L231.5 1022.5 C104.475 1022.5 1.5 919.526 1.5 792.5 L1.5 231.5 C1.5 104.475 104.475 1.5 231.5 1.5 Z" fill="none" stroke="url(#linear-gradient-4)" stroke-width="3" />
+  </g>
+  <g id="Layer_9" data-name="Layer 9">
+    <g id="Glow" data-vc-layer="sublayer">
+      <path d="M960 542 C960 642.782 917.857 739.437 842.843 810.701 C767.828 881.964 666.087 922 560 922 C453.913 922 352.172 881.964 277.157 810.701 C202.143 739.437 160 642.782 160 542 C160 441.218 202.143 344.563 277.157 273.299 C352.172 202.036 453.913 162 560 162 C666.087 162 767.828 202.036 842.843 273.299 C917.857 344.563 960 441.218 960 542 Z" fill="url(#radial-gradient-1)" />
+    </g>
+    <g id="Page_Back" data-name="Page Back" data-vc-layer="sublayer">
+      <path d="M220.497 270.177 L578.967 206.969 C605.074 202.366 629.969 219.798 634.573 245.905 L727.301 771.792 C731.904 797.899 714.472 822.794 688.365 827.398 L329.895 890.606 C303.788 895.209 278.893 877.777 274.289 851.67 L181.561 325.783 C176.958 299.676 194.39 274.78 220.497 270.177 Z" fill="#5c76b6" opacity="0.25" />
+      <path d="M218.066 256.39 L576.536 193.182 C602.643 188.578 627.538 206.01 632.142 232.117 L724.87 758.005 C729.473 784.111 712.041 809.007 685.934 813.61 L327.464 876.818 C301.357 881.422 276.462 863.99 271.858 837.883 L179.13 311.995 C174.527 285.888 191.959 260.993 218.066 256.39 Z" fill="url(#linear-gradient-5)" />
+      <path d="M224.089 267.513 L574.68 205.694 C596.436 201.858 617.182 216.384 621.019 238.14 L712.358 756.149 C716.194 777.905 701.667 798.651 679.911 802.487 L329.32 864.306 C307.564 868.142 286.817 853.615 282.981 831.86 L191.642 313.851 C187.806 292.095 202.333 271.349 224.089 267.513 Z" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="4" />
+    </g>
+    <g id="Page_Middle" data-name="Page Middle" data-vc-layer="sublayer">
+      <path d="M299.459 223.008 L662.074 191.283 C688.482 188.973 711.764 208.508 714.074 234.917 L760.616 766.885 C762.926 793.294 743.39 816.575 716.982 818.886 L354.367 850.61 C327.958 852.921 304.676 833.385 302.366 806.977 L255.825 275.009 C253.514 248.6 273.05 225.318 299.459 223.008 Z" fill="#5c76b6" opacity="0.22" />
+      <path d="M298.239 209.061 L660.853 177.336 C687.262 175.026 710.544 194.561 712.854 220.97 L759.395 752.938 C761.706 779.347 742.17 802.629 715.762 804.939 L353.147 836.664 C326.738 838.974 303.456 819.439 301.146 793.03 L254.605 261.062 C252.294 234.653 271.83 211.371 298.239 209.061 Z" fill="url(#linear-gradient-6)" />
+      <path d="M303.269 220.667 L657.914 189.639 C679.922 187.714 699.323 203.994 701.248 226.001 L747.092 749.999 C749.018 772.007 732.738 791.408 710.731 793.333 L356.086 824.361 C334.078 826.286 314.677 810.006 312.752 787.999 L266.908 264.001 C264.982 241.993 281.262 222.592 303.269 220.667 Z" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="4" />
+    </g>
+    <g id="Page_Front_Shadow" data-name="Page Front Shadow" data-vc-layer="sublayer">
+      <path d="M367.26 163.95 L679.7 163.95 L808.1 292.35 L808.1 786.69 C808.1 815.055 785.105 838.05 756.74 838.05 L367.26 838.05 C338.895 838.05 315.9 815.055 315.9 786.69 L315.9 215.31 C315.9 186.945 338.895 163.95 367.26 163.95 Z" fill="#5c76b6" opacity="0.07" />
+      <path d="M371.81 165.825 L676.95 165.825 L802.35 291.225 L802.35 774.015 C802.35 801.718 779.893 824.175 752.19 824.175 L371.81 824.175 C344.107 824.175 321.65 801.718 321.65 774.015 L321.65 215.985 C321.65 188.282 344.107 165.825 371.81 165.825 Z" fill="#5c76b6" opacity="0.09" />
+      <path d="M376.36 167.7 L674.2 167.7 L796.6 290.1 L796.6 761.34 C796.6 788.38 774.68 810.3 747.64 810.3 L376.36 810.3 C349.32 810.3 327.4 788.38 327.4 761.34 L327.4 216.66 C327.4 189.62 349.32 167.7 376.36 167.7 Z" fill="#5c76b6" opacity="0.12" />
+    </g>
+    <g id="Page_Front" data-name="Page Front" data-vc-layer="sublayer">
+      <path d="M380 164 L672 164 L792 284 L792 746 C792 772.51 770.51 794 744 794 L380 794 C353.49 794 332 772.51 332 746 L332 212 C332 185.49 353.49 164 380 164 Z" fill="url(#linear-gradient-7)" />
+      <path d="M384 164 L666 164 C668.209 164 670 165.791 670 168 L670 170 C670 172.209 668.209 174 666 174 L384 174 C381.791 174 380 172.209 380 170 L380 168 C380 165.791 381.791 164 384 164 Z" fill="url(#linear-gradient-highlight)" />
+      <path d="M344 216 C344 196.118 360.118 180 380 180" fill="none" stroke="#ffffff" stroke-opacity="0.8" stroke-width="5" stroke-linecap="round" />
+    </g>
+    <g id="Page_Fold" data-name="Page Fold" data-vc-layer="sublayer">
+      <path d="M666 176 L782 292 L716 292 C687.281 292 664 268.719 664 240 Z" fill="#5c76b6" opacity="0.16" />
+      <path d="M670 170 L788 288 L718 288 C690.386 288 668 265.614 668 238 Z" fill="#5c76b6" opacity="0.14" />
+      <path d="M672 164 L792 284 L720 284 C693.49 284 672 262.51 672 236 Z" fill="url(#linear-gradient-8)" />
+      <path d="M678 176 L778 276" fill="none" stroke="#ffffff" stroke-opacity="0.85" stroke-width="5" stroke-linecap="round" />
+    </g>
+    <g id="Signs" data-vc-layer="sublayer">
+      <path id="Plus" d="M533 363.7 C533 347.684 545.984 334.7 562 334.7 C578.016 334.7 591 347.684 591 363.7 L591 423.7 L659 423.7 C675.016 423.7 688 436.684 688 452.7 C688 468.716 675.016 481.7 659 481.7 L591 481.7 L591 541.7 C591 557.716 578.016 570.7 562 570.7 C545.984 570.7 533 557.716 533 541.7 L533 481.7 L465 481.7 C448.984 481.7 436 468.716 436 452.7 C436 436.684 448.984 423.7 465 423.7 L533 423.7 Z" fill="url(#linear-gradient-9)" />
+      <path id="Minus" d="M465 606.4 L659 606.4 C675.016 606.4 688 619.384 688 635.4 L688 635.4 C688 651.416 675.016 664.4 659 664.4 L465 664.4 C448.984 664.4 436 651.416 436 635.4 L436 635.4 C436 619.384 448.984 606.4 465 606.4 Z" fill="url(#linear-gradient-10)" />
+    </g>
+  </g>
+</svg>

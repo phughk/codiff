@@ -25,6 +25,7 @@ export type CodiffSettings = {
   openAIReasoningEffort: string;
   opencodeModel: string;
   piModel: string;
+  renderMarkdownAs: 'preview' | 'source';
   reviewCommentsPrefix: string;
   reviewPrompt: string;
   showOutdated: boolean;

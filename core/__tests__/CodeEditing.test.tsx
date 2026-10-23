@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import {
   DiffHunksRenderer,
+  getHighlighterOptions,
   parseDiffFromFile,
   parsePatchFiles,
   preloadHighlighter,
@@ -17,6 +18,7 @@ import {
   type CodeEditingStore,
 } from '../app/hooks/useCodeEditing.ts';
 import type { CodeViewItemMetadata, ReviewAnnotationMetadata } from '../lib/app-types.ts';
+import { workerHighlighterOptions } from '../lib/code-view-options.ts';
 import { getDiffParseOptions, loadSectionContents } from '../lib/diff.ts';
 import { createChangedFile } from './helpers/fixtures.ts';
 import { renderReact, waitFor } from './helpers/react.tsx';
@@ -202,12 +204,13 @@ function Harness({
           onItemEditChange={editing.onItemEditChange}
           onItemEditComplete={editing.onItemEditComplete}
           options={{
+            ...workerHighlighterOptions,
             diffStyle,
             disableErrorHandling: true,
             loadDiffFiles: () => loadSectionContents(editMetadata.file, editMetadata.section, load),
             parseDiffOptions: getDiffParseOptions(showWhitespace),
             stickyHeaders: true,
-            theme: 'github-dark',
+            theme: 'Dunkel',
             themeType: 'dark',
             useTokenTransformer: true,
           }}
@@ -228,7 +231,7 @@ beforeEach(async () => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
     measureText: (text: string) => ({ width: text.length * 8 }),
   } as unknown as CanvasRenderingContext2D);
-  await preloadHighlighter({ langs: ['text'], themes: ['github-dark'] });
+  await preloadHighlighter(getHighlighterOptions('text', workerHighlighterOptions));
   refresh.mockReset().mockResolvedValue(true);
   preparation = null;
   window.codiff = {
@@ -296,7 +299,7 @@ test('starting an edit reuses highlighted markup without highlighting the file a
 });
 
 test('warming an editor preserves the highlighted partial diff while preparing a separate full copy', async () => {
-  await preloadHighlighter({ langs: ['tsx'], themes: ['github-dark'] });
+  await preloadHighlighter(getHighlighterOptions('tsx', workerHighlighterOptions));
   const oldContents =
     'const first = 1;\nconst second = 2;\nconst value = "old";\nconst last = 4;\n';
   const contents = oldContents.replace('"old"', '"new"');

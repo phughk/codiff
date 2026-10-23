@@ -37,6 +37,7 @@ const createFixture = async () => {
     primeDiffHighlightCache: vi.fn(async (target: typeof diff) => {
       cache.set(target.cacheKey, result);
     }),
+    shouldHighlightOnMainThread: () => false,
   };
   const renderer = new DiffHunksRenderer(
     {},

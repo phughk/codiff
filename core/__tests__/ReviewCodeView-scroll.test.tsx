@@ -2,13 +2,14 @@
  * @vitest-environment jsdom
  */
 
-import { CodeView, preloadHighlighter } from '@pierre/diffs';
+import { CodeView, getHighlighterOptions, preloadHighlighter } from '@pierre/diffs';
 import { act, useCallback, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { beforeEach, expect, test, vi } from 'vite-plus/test';
 import { useReviewCommentDrafts } from '../app/hooks/useReviewCommentDrafts.ts';
 import { useReviewFileState } from '../app/hooks/useReviewState.ts';
 import type { ReviewComment, ReviewIdentity } from '../lib/app-types.ts';
+import { workerHighlighterOptions } from '../lib/code-view-options.ts';
 import {
   getWalkthroughReviewIdentity,
   updateReviewIdentityCollapsed,
@@ -170,6 +171,23 @@ const createLoadedMarkdownFile = (contents: string, fingerprint: string) => {
   };
 };
 
+const createAddedMarkdownFile = (contents: string, fingerprint: string) => {
+  const file = createLoadedMarkdownFile(contents, fingerprint);
+  return {
+    ...file,
+    sections: file.sections.map((section) => ({ ...section, oldFile: undefined })),
+    status: 'added' as const,
+  };
+};
+
+const editMarkdown = async (container: HTMLElement) => {
+  const button = container.querySelector<HTMLButtonElement>(
+    '.codiff-file-header button[aria-label="Edit plan.md"]',
+  );
+  expect(button).not.toBeNull();
+  await act(async () => button?.click());
+};
+
 const createCombinedFile = (contents: string, fingerprint: string) => {
   const file = createLoadedMarkdownFile(contents, fingerprint);
   const section = file.sections[0]!;
@@ -251,6 +269,320 @@ test('explicit generated metadata can keep generated-looking paths expanded', as
   });
 });
 
+test.each(['added', 'untracked'] as const)(
+  'new %s Markdown opens as a document without change markup',
+  async (status) => {
+    const file = {
+      ...createAddedMarkdownFile('# New document\n', `new-markdown:${status}`),
+      status,
+    };
+    await using view = await renderReact(<ReviewCodeViewHarness files={[file]} />);
+    await waitFor(() => {
+      expect(view.container.querySelector('[aria-label="Preview plan.md"]')).not.toBeNull();
+    });
+    expect(view.container.querySelector('.codiff-markdown-diff')).toBeNull();
+    expect(view.container.querySelector('[aria-label="Edit plan.md"]:not(button)')).toBeNull();
+    expect(
+      view.container.querySelector('.codiff-file-header button[aria-label="Edit plan.md"]'),
+    ).not.toBeNull();
+  },
+);
+
+test('modified Markdown opens as a rendered diff and source anchors navigate to exact old lines', async () => {
+  const file = createLoadedMarkdownFile('# Updated\n', 'markdown-source-anchor');
+  await using view = await renderReact(<ReviewCodeViewHarness files={[file]} />);
+  expect(view.container.querySelector('del')?.textContent).toBe('Original');
+  expect(view.container.querySelector('ins')?.textContent).toBe('Updated');
+  expect(view.container.querySelector('[aria-label="Edit plan.md"]:not(button)')).toBeNull();
+  await act(async () =>
+    view.container.querySelector<HTMLButtonElement>('.codiff-markdown-source-anchor')?.click(),
+  );
+  await waitFor(() => {
+    expect(view.container.querySelector('.codiff-markdown-diff')).toBeNull();
+    expect(codeViewMock.scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'diff:plan.md:unstaged',
+        lineNumber: 1,
+        side: 'deletions',
+        type: 'line',
+      }),
+    );
+  });
+});
+
+const createPatchOnlyMarkdownFile = (path: string) => {
+  const unloaded = createChangedFileWithPatch(
+    path,
+    `diff --git a/${path} b/${path}\n@@ -1 +1 @@\n-Old paragraph.\n+New paragraph.\n`,
+  );
+  return {
+    file: {
+      ...unloaded,
+      sections: unloaded.sections.map((section) => ({ ...section, loadState: 'ready' as const })),
+    },
+    onLoadSectionContents: vi.fn(async () => ({
+      newFile: { contents: 'New paragraph.\n', name: path },
+      oldFile: { contents: 'Old paragraph.\n', name: path },
+    })),
+  };
+};
+
+test('renderMarkdownAs source opens Markdown as a text diff that toggles to the preview and back', async () => {
+  const { file, onLoadSectionContents } = createPatchOnlyMarkdownFile('docs/plain.md');
+  await using view = await renderReact(
+    <ReviewCodeViewHarness
+      files={[file]}
+      onLoadSectionContents={onLoadSectionContents}
+      renderMarkdownAs="source"
+    />,
+  );
+  const getButton = (title: 'View as Diff' | 'View as Markdown') =>
+    view.container.querySelector<HTMLButtonElement>(`button[title="${title}"]`);
+  await waitFor(() => expect(getButton('View as Markdown')).not.toBeNull());
+
+  await act(async () => getButton('View as Markdown')?.click());
+  await waitFor(() => expect(view.container.querySelector('ins')?.textContent).toBe('New'));
+
+  await act(async () => getButton('View as Diff')?.click());
+  await waitFor(() => expect(getButton('View as Markdown')).not.toBeNull());
+});
+
+test('Markdown loads both revisions for patch-only reviews before showing rendered changes', async () => {
+  const unloaded = createChangedFileWithPatch(
+    'docs/lazy.md',
+    'diff --git a/docs/lazy.md b/docs/lazy.md\n@@ -1 +1 @@\n-Old paragraph.\n+New paragraph.\n',
+  );
+  const file = {
+    ...unloaded,
+    sections: unloaded.sections.map((section) => ({ ...section, loadState: 'ready' as const })),
+  };
+  const onLoadSectionContents = vi.fn(async () => ({
+    newFile: { contents: 'New paragraph.\n', name: file.path },
+    oldFile: { contents: 'Old paragraph.\n', name: file.path },
+  }));
+  await using view = await renderReact(
+    <ReviewCodeViewHarness files={[file]} onLoadSectionContents={onLoadSectionContents} />,
+  );
+  await waitFor(() => {
+    expect(view.container.querySelector('del')?.textContent).toBe('Old');
+    expect(view.container.querySelector('ins')?.textContent).toBe('New');
+  });
+  expect(onLoadSectionContents).toHaveBeenCalledOnce();
+});
+
+test('a failed Markdown load is retried once', async () => {
+  const { file, onLoadSectionContents } = createPatchOnlyMarkdownFile('docs/retry.md');
+  onLoadSectionContents.mockRejectedValueOnce(new Error('Load failed'));
+  await using view = await renderReact(
+    <ReviewCodeViewHarness files={[file]} onLoadSectionContents={onLoadSectionContents} />,
+  );
+  await waitFor(() => expect(view.container.querySelector('ins')?.textContent).toBe('New'));
+  expect(onLoadSectionContents).toHaveBeenCalledTimes(2);
+});
+
+test('a Markdown load that keeps failing is not retried on later renders', async () => {
+  const { file, onLoadSectionContents } = createPatchOnlyMarkdownFile('docs/broken.md');
+  onLoadSectionContents.mockRejectedValue(new Error('Too large'));
+  await using view = await renderReact(
+    <ReviewCodeViewHarness files={[file]} onLoadSectionContents={onLoadSectionContents} />,
+  );
+  await waitFor(() => expect(onLoadSectionContents).toHaveBeenCalledTimes(2));
+  await view.rerender(
+    <ReviewCodeViewHarness files={[file]} onLoadSectionContents={onLoadSectionContents} />,
+  );
+  expect(onLoadSectionContents).toHaveBeenCalledTimes(2);
+});
+
+test('Markdown sections that cannot load are not fetched', async () => {
+  const { file, onLoadSectionContents } = createPatchOnlyMarkdownFile('docs/unloadable.md');
+  const unloadable = {
+    ...file,
+    sections: file.sections.map((section) => ({
+      ...section,
+      summary: { canLoad: false, reason: 'Codiff could not load full file context.' },
+    })),
+  };
+  await using _view = await renderReact(
+    <ReviewCodeViewHarness files={[unloadable]} onLoadSectionContents={onLoadSectionContents} />,
+  );
+  expect(onLoadSectionContents).not.toHaveBeenCalled();
+});
+
+test('Markdown outside the rendered viewport waits to load full revisions', async () => {
+  const files = ['first.md', 'later.md'].map((path) => {
+    const file = createChangedFile(path);
+    return {
+      ...file,
+      sections: file.sections.map((section) => ({ ...section, loadState: 'ready' as const })),
+    };
+  });
+  const laterItemId = `diff:${files[1].sections[0].id}`;
+  codeViewMock.unrenderedItemIds.add(laterItemId);
+  const onLoadSectionContents = vi.fn(async (file: ChangedFile) => ({
+    newFile: { contents: 'New paragraph.\n', name: file.path },
+    oldFile: { contents: 'Old paragraph.\n', name: file.path },
+  }));
+  const props = { files, onLoadSectionContents };
+  await using view = await renderReact(<ReviewCodeViewHarness {...props} />);
+  await waitFor(() => expect(view.container.querySelector('ins')?.textContent).toBe('New'));
+  expect(onLoadSectionContents.mock.calls.map(([file]) => file.path)).toEqual(['first.md']);
+
+  codeViewMock.unrenderedItemIds.delete(laterItemId);
+  await view.rerender(
+    <ReviewCodeViewHarness {...props} scrollTarget={{ path: 'later.md', request: 1 }} />,
+  );
+  await waitFor(() => expect(view.container.querySelectorAll('ins')).toHaveLength(2));
+  expect(onLoadSectionContents.mock.calls.map(([file]) => file.path)).toEqual([
+    'first.md',
+    'later.md',
+  ]);
+});
+
+test('deleted Markdown shows the removed document', async () => {
+  const file = createLoadedMarkdownFile('', 'markdown-deleted');
+  await using view = await renderReact(
+    <ReviewCodeViewHarness
+      files={[
+        {
+          ...file,
+          sections: file.sections.map((section) => ({ ...section, newFile: undefined })),
+          status: 'deleted',
+        },
+      ]}
+    />,
+  );
+  expect(view.container.querySelector('.removed h1')?.textContent).toBe('Original');
+  expect(view.container.querySelector('.codiff-markdown-after')).toBeNull();
+});
+
+test('Markdown line comments remain visible and deep links open their source lines', async () => {
+  const file = createLoadedMarkdownFile('# Changed\n', 'markdown-comment');
+  const comment = {
+    body: 'Please keep this heading.',
+    filePath: file.path,
+    id: 'markdown-line-comment',
+    isReadOnly: true,
+    lineNumber: 1,
+    sectionId: file.sections[0].id,
+    side: 'additions',
+  } satisfies ReviewComment;
+  const props = { comments: [comment], files: [file] };
+  await using view = await renderReact(<ReviewCodeViewHarness {...props} />);
+  expect(view.container.querySelector('.codiff-markdown-diff')).not.toBeNull();
+  expect(view.container.textContent).toContain(comment.body);
+  await view.rerender(
+    <ReviewCodeViewHarness {...props} scrollTarget={{ commentId: comment.id, request: 1 }} />,
+  );
+  await waitFor(() => {
+    expect(view.container.querySelector('.codiff-markdown-diff')).toBeNull();
+    expect(codeViewMock.scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({ lineNumber: 1, side: 'additions', type: 'line' }),
+    );
+  });
+});
+
+test('Markdown search opens source to reveal the matching line', async () => {
+  const file = createLoadedMarkdownFile('# Changed\n', 'markdown-search');
+  await using view = await renderReact(
+    <ReviewCodeViewHarness
+      activeSearchMatch={{
+        filePath: file.path,
+        itemId: `diff:${file.sections[0].id}`,
+        lineNumber: 1,
+        side: 'deletions',
+      }}
+      files={[file]}
+      searchQuery="Original"
+    />,
+  );
+  await waitFor(() => {
+    expect(view.container.querySelector('.codiff-markdown-diff')).toBeNull();
+    expect(codeViewMock.scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({ lineNumber: 1, side: 'deletions', type: 'line' }),
+    );
+  });
+});
+
+test('hunk navigation visits rendered Markdown changes', async () => {
+  const file = createLoadedMarkdownFile('# Changed\n', 'markdown-hunks');
+  const getRect = HTMLElement.prototype.getBoundingClientRect;
+  using _geometry = vi
+    .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    .mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute('data-markdown-change')
+        ? new DOMRect(0, 300, 900, 100)
+        : getRect.call(this);
+    });
+  await using view = await renderReact(<ReviewCodeViewHarness files={[file]} />);
+  codeViewMock.scrollTo.mockClear();
+  await view.rerender(
+    <ReviewCodeViewHarness files={[file]} hunkNavigation={{ direction: 1, request: 1 }} />,
+  );
+  expect(codeViewMock.scrollTo).toHaveBeenLastCalledWith(
+    expect.objectContaining({ position: expect.any(Number), type: 'position' }),
+  );
+});
+
+test('later edits to a newly added Markdown file are still shown as diffs', async () => {
+  const file = { ...createCombinedFile('# Updated\n', 'new-with-edits'), status: 'added' as const };
+  const firstSection = { ...file.sections[0]!, oldFile: undefined };
+  await using view = await renderReact(
+    <ReviewCodeViewHarness files={[{ ...file, sections: [firstSection, file.sections[1]!] }]} />,
+  );
+  expect(view.container.querySelectorAll('.codiff-markdown-diff')).toHaveLength(1);
+  expect(view.container.querySelector('[aria-label="Preview plan.md"]')).not.toBeNull();
+});
+
+test('finishing explicit Markdown editing flushes and returns to rendered changes', async () => {
+  const file = createLoadedMarkdownFile('# Changed\n', 'markdown-finish');
+  const onRefreshMarkdown = vi.fn(async () => true);
+  await using view = await renderReact(
+    <ReviewCodeViewHarness files={[file]} onRefreshMarkdown={onRefreshMarkdown} />,
+  );
+  expect(view.container.querySelector('.codiff-markdown-review-actions')).toBeNull();
+  expect(
+    view.container.querySelector('.codiff-file-header button[aria-label="Edit plan.md"]')
+      ?.textContent,
+  ).toBe('Edit');
+  await editMarkdown(view.container);
+  const done = view.container.querySelector<HTMLButtonElement>(
+    '.codiff-file-header button[aria-label="Done editing plan.md"]',
+  );
+  expect(done?.textContent).toBe('Done');
+  expect(view.container.querySelector('.codiff-markdown-preview button')).toBeNull();
+  await act(async () => done?.click());
+  expect(markdownEditorMock.flush).toHaveBeenCalledOnce();
+  expect(onRefreshMarkdown).toHaveBeenCalledWith(file, file.sections[0]);
+  expect(view.container.querySelector('.codiff-markdown-diff')).not.toBeNull();
+  expect(view.container.querySelector('[aria-label="Edit plan.md"]:not(button)')).toBeNull();
+});
+
+test('a failed Markdown flush keeps the editor open and skips refreshing', async () => {
+  const file = createLoadedMarkdownFile('# Changed\n', 'markdown-flush-failure');
+  const onRefreshMarkdown = vi.fn(async () => true);
+  markdownEditorMock.flush.mockResolvedValue(false);
+  await using view = await renderReact(
+    <ReviewCodeViewHarness files={[file]} onRefreshMarkdown={onRefreshMarkdown} />,
+  );
+  await editMarkdown(view.container);
+  const done = view.container.querySelector<HTMLButtonElement>(
+    '.codiff-file-header button[aria-label="Done editing plan.md"]',
+  );
+  await act(async () => done?.click());
+  expect(view.container.querySelector('[aria-label="Edit plan.md"]:not(button)')).not.toBeNull();
+  expect(onRefreshMarkdown).not.toHaveBeenCalled();
+});
+
+test('changing renderMarkdownAs keeps Markdown that is being edited open', async () => {
+  const file = createLoadedMarkdownFile('# Changed\n', 'markdown-edit-render-as');
+  await using view = await renderReact(<ReviewCodeViewHarness files={[file]} />);
+  await editMarkdown(view.container);
+  expect(view.container.querySelector('[aria-label="Edit plan.md"]:not(button)')).not.toBeNull();
+
+  await view.rerender(<ReviewCodeViewHarness files={[file]} renderMarkdownAs="source" />);
+  expect(view.container.querySelector('[aria-label="Edit plan.md"]:not(button)')).not.toBeNull();
+});
+
 test('switching edited Markdown back to a diff flushes and refreshes it first', async () => {
   const order: Array<string> = [];
   const initialFile = createLoadedMarkdownFile('# Edited\n', 'plan.md:initial');
@@ -293,7 +625,8 @@ test('switching edited Markdown back to a diff flushes and refreshes it first', 
     root = createRoot(container);
     root.render(<Harness />);
   });
-  expect(container.querySelector('[aria-label="Edit plan.md"]')).not.toBeNull();
+  await editMarkdown(container);
+  expect(container.querySelector('[aria-label="Edit plan.md"]:not(button)')).not.toBeNull();
   const diffButton = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
     ({ textContent }) => textContent === 'View as Diff',
   );
@@ -304,7 +637,7 @@ test('switching edited Markdown back to a diff flushes and refreshes it first', 
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
   await waitFor(() => {
-    expect(container.querySelector('[aria-label="Edit plan.md"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Edit plan.md"]:not(button)')).toBeNull();
   });
   expect(order).toEqual(['flush', 'refresh']);
   expect(JSON.stringify(codeViewMock.lastItems)).toContain('# Saved');
@@ -357,17 +690,18 @@ test('combined branch Markdown edits only the final working-tree section', async
     root = createRoot(container);
     root.render(<Harness />);
   });
-  expect(container.querySelector('[aria-label="Edit plan.md"]')).not.toBeNull();
-  const diffButton = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
-    ({ textContent }) => textContent === 'View as Diff',
-  );
+  await editMarkdown(container);
+  expect(container.querySelector('[aria-label="Edit plan.md"]:not(button)')).not.toBeNull();
+  const diffButton = [...container.querySelectorAll<HTMLButtonElement>('button')]
+    .filter(({ textContent }) => textContent === 'View as Diff')
+    .at(-1);
   expect(diffButton).not.toBeUndefined();
   await act(async () => {
     diffButton?.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
   await waitFor(() => {
-    expect(container.querySelector('[aria-label="Edit plan.md"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Edit plan.md"]:not(button)')).toBeNull();
   });
   expect(order).toEqual(['flush', 'refresh']);
   expect(JSON.stringify(codeViewMock.lastItems)).toContain('# Saved');
@@ -409,21 +743,16 @@ test('combined branch-only Markdown sections remain read-only', async () => {
       />,
     );
   });
-  expect(container.querySelector('[aria-label="Edit plan.md"]')).toBeNull();
-  const markdownButton = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
-    ({ textContent }) => textContent === 'View as Markdown',
-  );
-  expect(markdownButton).not.toBeUndefined();
-  await act(async () => {
-    markdownButton?.click();
-  });
-  await waitFor(() => {
-    expect(container.querySelector('[aria-label="Preview plan.md"]')).not.toBeNull();
-  });
-  expect(container.querySelector('[aria-label="Edit plan.md"]')).toBeNull();
+  expect(container.querySelector('[aria-label="Edit plan.md"]:not(button)')).toBeNull();
+  expect(container.querySelector('[aria-label="Changes to plan.md"]')).not.toBeNull();
+  expect(container.querySelector('.codiff-markdown-review-actions')).toBeNull();
+  expect(
+    container.querySelector('.codiff-file-header button[aria-label="Edit plan.md"]'),
+  ).toBeNull();
+  expect(container.querySelector('[aria-label="Edit plan.md"]:not(button)')).toBeNull();
 });
 
-test('read-only Markdown previews render with the shared Markdown editor', async () => {
+test('read-only Markdown previews render additions and deletions', async () => {
   const sectionId = 'README.md:unstaged';
   const file = {
     fingerprint: 'markdown-preview-added-lines',
@@ -470,14 +799,10 @@ test('read-only Markdown previews render with the shared Markdown editor', async
       />,
     );
   });
-  await waitFor(() => {
-    const preview = container.querySelector<HTMLTextAreaElement>(
-      '[aria-label="Preview README.md"]',
-    );
-    expect(preview).not.toBeNull();
-    expect(preview?.readOnly).toBe(true);
-    expect(preview?.value).toBe('# Title\n\nNew paragraph.\n');
-  });
+  expect(container.querySelector('[aria-label="Changes to README.md"]')).not.toBeNull();
+  expect(container.querySelector('del')?.textContent).toBe('Old');
+  expect(container.querySelector('ins')?.textContent).toBe('New');
+  expect(container.querySelector('.codiff-markdown-review-actions')).toBeNull();
 });
 
 test('scroll selection updates do not publish new item versions', async () => {
@@ -1371,15 +1696,16 @@ test('hunk navigation skips pull request description source context', async () =
 });
 
 test('markdown preview files survive layout updates in the real virtualized renderer', async () => {
-  await preloadHighlighter({ langs: ['text'], themes: ['github-dark'] });
+  await preloadHighlighter(getHighlighterOptions('text', workerHighlighterOptions));
   const file = createLoadedMarkdownFile('# Readme\n', 'markdown-layout');
   await using app = await renderReact(<ReviewCodeViewHarness files={[file]} />);
   const root = document.createElement('div');
   root.className = 'code-view';
   document.body.append(root);
   const viewer = new CodeView<unknown>({
+    ...workerHighlighterOptions,
     disableErrorHandling: true,
-    theme: 'github-dark',
+    theme: 'Dunkel',
     themeType: 'dark',
   });
   try {
@@ -1415,7 +1741,7 @@ test('markdown preview files survive layout updates in the real virtualized rend
 });
 
 test('read-only markdown previews trigger CodeView layout remeasurement after height change', async () => {
-  const markdownFile = createLoadedMarkdownFile(
+  const markdownFile = createAddedMarkdownFile(
     '![diagram](https://example.com/diagram.png)\n',
     'markdown-image-layout',
   );
@@ -1466,8 +1792,8 @@ test('read-only markdown previews trigger CodeView layout remeasurement after he
 });
 
 test('recycled Markdown previews retain their measured height during layout-only updates', async () => {
-  await preloadHighlighter({ langs: ['text'], themes: ['github-dark'] });
-  const file = createLoadedMarkdownFile('# Long document\n', 'markdown-recycling');
+  await preloadHighlighter(getHighlighterOptions('text', workerHighlighterOptions));
+  const file = createAddedMarkdownFile('# Long document\n', 'markdown-recycling');
   const props = {
     files: [file],
     initialMarkdownPreviewSectionIds: new Set(['plan.md:unstaged']),
@@ -1489,9 +1815,10 @@ test('recycled Markdown previews retain their measured height during layout-only
   container.className = 'code-view';
   document.body.append(container);
   const viewer = new CodeView<unknown>({
+    ...workerHighlighterOptions,
     disableErrorHandling: true,
     renderAnnotation: () => document.createElement('div'),
-    theme: 'github-dark',
+    theme: 'Dunkel',
     themeType: 'dark',
   });
   try {
@@ -1531,6 +1858,7 @@ test('Markdown previews reserve their last measured height while a recycled edit
   const itemId = 'diff:plan.md:unstaged';
   markdownEditorMock.heightByAriaLabel.set('Edit plan.md', 5000);
   await using app = await renderReact(<ReviewCodeViewHarness files={[file]} />);
+  await editMarkdown(app.container);
   const rerender = () => app.rerender(<ReviewCodeViewHarness files={[file]} />);
   const remountLoadingEditor = async () => {
     codeViewMock.hiddenAnnotationItemIds.add(itemId);

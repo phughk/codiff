@@ -495,7 +495,7 @@ test('total diff line counts sum countable files only', () => {
   });
 });
 
-test('markdown previews use new file contents for modified files', () => {
+test('markdown previews retain both revisions for modified files', () => {
   const file = {
     fingerprint: 'markdown-preview-added-lines',
     path: 'README.md',
@@ -523,6 +523,7 @@ test('markdown previews use new file contents for modified files', () => {
   const preview = getMarkdownPreviewContents(file, section, fileDiff);
 
   expect(preview?.contents).toBe(file.sections[0].newFile?.contents);
+  expect(preview?.oldContents).toBe(file.sections[0].oldFile?.contents);
 });
 
 test('inline markdown shows markdown and GitHub HTML images', () => {

@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { liveEntityTopic } from '@nkzw/fate/server';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest';
 import { handleSharingApiRequest, type SharingBucket, type SharingEnv } from '../service/api.ts';
@@ -585,6 +586,56 @@ test('requires GitHub authentication before an upload intent can persist or be c
   expect(
     await SELF.fetch(`${origin}/api/upload-intents/${intent.code}?secret=tampered`),
   ).toMatchObject({ status: 404 });
+});
+
+test('streams upload intent updates through the Void live route', async () => {
+  const cookie = await signInWithGitHub(ada);
+  const { value: intent } = await createIntent(cookie);
+  const claimed = await claimIntent(intent, cookie);
+  const connectionId = crypto.randomUUID();
+  const topic = liveEntityTopic('UploadIntent', claimed.id);
+  const response = await SELF.fetch(`${origin}/fate-live?connectionId=${connectionId}`);
+  expect(response.status).toBe(200);
+  expect(response.headers.get('content-type')).toContain('text/event-stream');
+  const reader = response.body!.getReader();
+  try {
+    // Read the initial connection comment before subscribing and publishing.
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain(': connected');
+    const control = await SELF.fetch(`${origin}/fate-live`, {
+      body: JSON.stringify({
+        connectionId,
+        operations: [{ id: 'upload-intent', kind: 'subscribe', topic }],
+      }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+    expect(control.status).toBe(200);
+    expect(await control.json()).toMatchObject({
+      accepted: true,
+      results: [{ id: 'upload-intent', kind: 'subscribe', ok: true }],
+    });
+
+    const upload = await uploadShare(intent, planSnapshot);
+    expect(upload.status).toBe(200);
+    const { slug } = await readJson<{ slug: string }>(upload);
+    const decoder = new TextDecoder();
+    let frame = '';
+    while (!frame.includes('\n\n')) {
+      const { done, value } = await reader.read();
+      expect(done).toBe(false);
+      frame += decoder.decode(value, { stream: true });
+    }
+    const data = frame.split('\n').find((line) => line.startsWith('data: '));
+    expect(JSON.parse(data!.slice('data: '.length))).toMatchObject({
+      data: { changed: ['shareKind', 'status', 'walkthroughSlug'], id: claimed.id },
+      eventId: `upload-intent:${claimed.id}:${slug}`,
+      subscriptionId: 'upload-intent',
+      topic,
+      type: 'update',
+    });
+  } finally {
+    await reader.cancel();
+  }
 });
 
 test('stores immutable plan and walkthrough shares through D1, R2, Fate, and polling', async () => {

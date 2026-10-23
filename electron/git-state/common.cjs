@@ -714,8 +714,10 @@ const summarizeContent = (...results) => {
  */
 const getWorkingTreeContents = async (repoRoot, item, kind, options = {}) => {
   if (kind === 'staged') {
-    const oldFile = await readGitFile(repoRoot, 'HEAD', item.oldPath || item.path, options);
-    const newFile = await readIndexFile(repoRoot, item.path, options);
+    const [oldFile, newFile] = await Promise.all([
+      readGitFile(repoRoot, 'HEAD', item.oldPath || item.path, options),
+      readIndexFile(repoRoot, item.path, options),
+    ]);
     const summary = summarizeContent(oldFile, newFile);
 
     return {
@@ -755,8 +757,10 @@ const getWorkingTreeContents = async (repoRoot, item, kind, options = {}) => {
     };
   }
 
-  const oldFile = await readIndexFile(repoRoot, item.path, options, item.conflictStage);
-  const newFile = await readWorkingTreeFile(repoRoot, item.path, options);
+  const [oldFile, newFile] = await Promise.all([
+    readIndexFile(repoRoot, item.path, options, item.conflictStage),
+    readWorkingTreeFile(repoRoot, item.path, options),
+  ]);
   const summary = summarizeContent(oldFile, newFile);
 
   return {

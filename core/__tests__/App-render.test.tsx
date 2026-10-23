@@ -188,6 +188,7 @@ const createCodiffMock = (overrides: Partial<Window['codiff']> = {}): Window['co
     openAIReasoningEffort: defaultSettings.openAIReasoningEffort,
     opencodeModel: defaultSettings.opencodeModel,
     piModel: defaultSettings.piModel,
+    renderMarkdownAs: defaultSettings.renderMarkdownAs,
     reviewCommentsPrefix: defaultSettings.reviewCommentsPrefix,
     showOutdated: false,
     showWhitespace: false,
@@ -230,6 +231,7 @@ const createCodiffMock = (overrides: Partial<Window['codiff']> = {}): Window['co
   })),
   isWindowFullScreen: vi.fn(async () => false),
   markPlanReady: vi.fn(async () => {}),
+  markWindowReady: vi.fn(),
   onConfigChanged: vi.fn(() => () => {}),
   onCopyPendingCommentsRequest: vi.fn(() => () => {}),
   onEditReviewPrompt: vi.fn(() => () => {}),
@@ -384,6 +386,99 @@ const renderAppForOpenFileShortcut = async (file: ChangedFile) => {
     },
   };
 };
+
+test('displays a diff while setup status and history are still pending', async () => {
+  const getAgentSkillStatus = vi.fn(() => new Promise<never>(() => {}));
+  const getRepositoryHistory = vi.fn(
+    () => new Promise<Awaited<ReturnType<Window['codiff']['getRepositoryHistory']>>>(() => {}),
+  );
+  window.codiff = createCodiffMock({
+    getAgentSkillStatus,
+    getRepositoryHistory,
+    getRepositoryState: vi.fn(async () => ({
+      ...repositoryState,
+      files: [createChangedFile('src/app.ts')],
+    })),
+    getTerminalHelperStatus: vi.fn(() => new Promise<never>(() => {})),
+  });
+  await using view = await renderReact(<App />);
+  await waitFor(() => {
+    expect(view.container.querySelector('.codiff-file-header')).not.toBeNull();
+    expect(view.container.querySelector('.loading')).toBeNull();
+  });
+  await waitFor(() => {
+    expect(getRepositoryHistory).toHaveBeenCalledOnce();
+  });
+  await waitFor(() => expect(getAgentSkillStatus).toHaveBeenCalledOnce());
+  await waitFor(() => expect(window.codiff.markWindowReady).toHaveBeenCalledOnce());
+});
+
+test('the first review layout uses the loaded preferences', async () => {
+  const config = Promise.withResolvers<ReturnType<typeof createDefaultConfig>>();
+  const nextConfig = createDefaultConfig();
+  nextConfig.settings.sidebarPosition = 'right';
+  window.codiff = createCodiffMock({ getConfig: vi.fn(() => config.promise) });
+  await using view = await renderReact(<App />);
+  expect(view.container.querySelector('.app-shell')).toBeNull();
+  expect(window.codiff.markWindowReady).not.toHaveBeenCalled();
+  await act(async () => config.resolve(nextConfig));
+  await waitFor(() => {
+    expect(view.container.querySelector('.app-shell')?.getAttribute('data-sidebar-position')).toBe(
+      'right',
+    );
+    expect(window.codiff.markWindowReady).toHaveBeenCalledOnce();
+  });
+});
+
+test('unavailable preferences still reveal the review with defaults', async () => {
+  window.codiff = createCodiffMock({
+    getConfig: vi.fn(async () => {
+      throw new Error('Unavailable');
+    }),
+  });
+  await using view = await renderReact(<App />);
+  await waitFor(() => {
+    expect(view.container.querySelector('.app-shell')).not.toBeNull();
+    expect(window.codiff.markWindowReady).toHaveBeenCalledOnce();
+  });
+});
+
+test('a failed background history request does not hide the diff', async () => {
+  const getRepositoryHistory = vi.fn(async () => {
+    throw new Error('History is unavailable');
+  });
+  window.codiff = createCodiffMock({
+    getRepositoryHistory,
+    getRepositoryState: vi.fn(async () => ({
+      ...repositoryState,
+      files: [createChangedFile('src/app.ts')],
+    })),
+  });
+  await using view = await renderReact(<App />);
+  await waitFor(() => expect(getRepositoryHistory).toHaveBeenCalledOnce());
+  expect(view.container.querySelector('.codiff-file-header')).not.toBeNull();
+  expect(view.container.textContent).not.toContain('History is unavailable');
+});
+
+test('displays the repository while its initial walkthrough is being generated', async () => {
+  window.codiff = createCodiffMock({
+    getLaunchOptions: vi.fn(async () => ({
+      repositoryPathProvided: true,
+      walkthrough: true,
+    })),
+    getNarrativeWalkthrough: vi.fn(() => new Promise<never>(() => {})),
+    getRepositoryState: vi.fn(async () => ({
+      ...repositoryState,
+      files: [createChangedFile('src/app.ts')],
+    })),
+  });
+  await using view = await renderReact(<App />);
+  await waitFor(() => {
+    expect(view.container.querySelector('.app-shell')).not.toBeNull();
+    expect(view.container.querySelector('.loading')).toBeNull();
+    expect(view.container.textContent).toContain('app.ts');
+  });
+});
 
 test('code font preferences update root CSS variables', async () => {
   const nextConfig = createDefaultConfig();
@@ -839,6 +934,87 @@ test('sidebar commit button toggles back to tree when commit view is open', asyn
 
   await act(async () => root.unmount());
   container.remove();
+});
+
+test('history summarizes the selected commit independently of file and history filters', async () => {
+  let resolveCommit: ((state: RepositoryState) => void) | undefined;
+  const commitSource = { ref: 'aaa1111', type: 'commit' } satisfies ReviewSource;
+  const emptySource = { ref: 'bbb2222', type: 'commit' } satisfies ReviewSource;
+  const files = [
+    createChangedFile('src/app.ts'),
+    createChangedFile('tests/app.ts'),
+    createChangedFile('README.md'),
+  ];
+  window.codiff = createCodiffMock({
+    getRepositoryHistory: vi.fn(async () => ({
+      entries: [
+        {
+          author: 'Reviewer',
+          committedAt: Date.now(),
+          parents: [],
+          ref: commitSource.ref,
+          subject: 'Update tests',
+        },
+        {
+          author: 'Reviewer',
+          committedAt: Date.now(),
+          parents: [],
+          ref: emptySource.ref,
+          subject: 'Empty commit',
+        },
+      ],
+      root: '/repo',
+    })),
+    getRepositoryState: vi.fn((source?: ReviewSource) => {
+      if (source?.type === 'commit' && source.ref === commitSource.ref) {
+        return new Promise<RepositoryState>((resolve) => {
+          resolveCommit = resolve;
+        });
+      }
+      return Promise.resolve({
+        ...repositoryState,
+        files: source?.type === 'commit' ? [] : files,
+        source: source ?? repositoryState.source,
+      });
+    }),
+  });
+  await using app = await renderReact(<App />);
+  const total = () => app.container.querySelector('.sidebar-total-line-count')?.textContent;
+  await waitFor(() => expect(total()).toBe('+3-3'));
+  await setInputValue(app.container.querySelector<HTMLInputElement>('.sidebar-search')!, 'README');
+  await waitFor(() => expect(total()).toBe('+1-1'));
+  await act(async () =>
+    [...app.container.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      .find((button) => button.textContent === 'History')!
+      .click(),
+  );
+  await waitFor(() => expect(total()).toBe('+3-3'));
+  await setInputValue(app.container.querySelector<HTMLInputElement>('.sidebar-search')!, 'tests');
+  expect(total()).toBe('+3-3');
+  const breakdown = app.container.querySelector('.sidebar-summary-breakdown');
+  await act(async () =>
+    app.container.querySelector<HTMLButtonElement>('.history-entry[title="Update tests"]')!.click(),
+  );
+  expect(total()).toBeUndefined();
+  expect(app.container.querySelector('.sidebar-summary-breakdown')).toBe(breakdown);
+  expect(app.container.querySelector('.sidebar-summary-footer[aria-busy="true"]')).not.toBeNull();
+  await act(async () =>
+    resolveCommit!({ ...repositoryState, files: [files[1]], source: commitSource }),
+  );
+  await waitFor(() => expect(total()).toBe('+1-1'));
+  expect(
+    [...app.container.querySelectorAll('.sidebar-summary-breakdown > div')].map(
+      (row) => row.textContent,
+    ),
+  ).toEqual(['Prod+0-0', 'Tests+1-1', 'Other+0-0']);
+  await setInputValue(app.container.querySelector<HTMLInputElement>('.sidebar-search')!, '');
+  await act(async () =>
+    app.container.querySelector<HTMLButtonElement>('.history-entry[title="Empty commit"]')!.click(),
+  );
+  await waitFor(() =>
+    expect(app.container.querySelector('.sidebar-total-empty')?.textContent).toBe('—'),
+  );
+  expect(app.container.querySelector('.sidebar-summary-footer')).not.toBeNull();
 });
 
 test('repository reload restores the selected file when it still exists', async () => {

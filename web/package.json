@@ -12,18 +12,18 @@
     "fate:generate": "node ../node_modules/react-fate/lib/cli.mjs generate"
   },
   "dependencies": {
-    "@base-ui/react": "^1.8.0",
+    "@base-ui/react": "^1.9.0",
     "@nkzw/codiff-core": "workspace:*",
     "@nkzw/codiff-service": "workspace:*",
     "@phosphor-icons/react": "^2.1.10",
-    "@void/react": "0.26.0",
-    "better-auth": "^1.7.7",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
+    "@void/react": "1.2.1",
+    "better-auth": "^1.7.12",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "react-error-boundary": "^6.1.6",
-    "react-fate": "^1.7.7",
-    "void": "^0.26.0",
-    "void-fate": "^1.7.7"
+    "react-fate": "^1.11.1",
+    "void": "^1.2.1",
+    "void-fate": "^1.11.1"
   },
   "devDependencies": {
     "@rolldown/plugin-babel": "^0.2.4",

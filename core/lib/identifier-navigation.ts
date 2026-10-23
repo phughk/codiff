@@ -85,17 +85,12 @@ const commonKeywords = new Set([
 
 const identifierNavigationAttribute = 'data-codiff-identifier';
 const definitionModifierAttribute = 'data-codiff-definition-mode';
-const nonCodeScopePattern = /(^|\s)(comment|string)([.\s]|$)/;
+const nonCodeScopePattern = /^(comment|string)(\.|$)/;
 const nonCodeTokenColors = new Set(
   [dunkelTheme, lichtTheme].flatMap((theme) =>
-    theme.tokenColors.flatMap((token) => {
-      const scopes = Array.isArray(token.scope) ? token.scope : [token.scope];
-      const foreground = token.settings.foreground?.toLowerCase();
-      return foreground &&
-        scopes.some((scope) => typeof scope === 'string' && nonCodeScopePattern.test(scope))
-        ? [foreground]
-        : [];
-    }),
+    Object.entries(theme.style.syntax).flatMap(([scope, token]) =>
+      nonCodeScopePattern.test(scope) ? [token.color.toLowerCase()] : [],
+    ),
   ),
 );
 

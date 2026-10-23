@@ -89,6 +89,7 @@ const { createEditorCheckoutResolver } = require('./main/editor-checkout.cjs');
 const { createEditorOpener } = require('./main/editor.cjs');
 const { createDefinitionSearchCoordinator } = require('./definition-search.cjs');
 const { createTerminalHelper } = require('./main/terminal-helper.cjs');
+const { createWindowRevealController } = require('./window-reveal.cjs');
 const {
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
@@ -138,6 +139,8 @@ const { createWalkthroughProgressReporter } = require('./walkthrough-progress.cj
  */
 
 const root = dirname(__dirname);
+/** @type {Map<number, ReturnType<typeof createWindowRevealController>>} */
+const windowRevealControllers = new Map();
 /** @type {Map<number, WindowIdentity | null>} */
 const windowIdentities = new Map();
 /** @type {Map<number, string>} */
@@ -1087,6 +1090,7 @@ const createWindow = (
   const display = screen.getPrimaryDisplay();
   const { height, width } = display.workAreaSize;
   const useMacVibrancy = process.platform === 'darwin';
+  const useStartupOpacity = process.platform === 'darwin' || process.platform === 'win32';
   const window = new BrowserWindow({
     autoHideMenuBar: process.platform !== 'linux',
     backgroundColor: useMacVibrancy
@@ -1097,6 +1101,7 @@ const createWindow = (
     height: validatedState?.height ?? Math.max(720, Math.floor(height * 0.86)),
     minHeight: MIN_WINDOW_HEIGHT,
     minWidth: MIN_WINDOW_WIDTH,
+    opacity: useStartupOpacity ? 0 : 1,
     show: false,
     titleBarStyle: useMacVibrancy ? 'hiddenInset' : 'default',
     ...(useMacVibrancy
@@ -1126,6 +1131,10 @@ const createWindow = (
   attachExternalLinkHandling(window.webContents, (url) => shell.openExternal(url));
 
   const webContentsId = window.webContents.id;
+  windowRevealControllers.set(
+    webContentsId,
+    createWindowRevealController(window, useStartupOpacity),
+  );
   openWindows.add(window);
   if (identity) {
     windowIdentities.set(webContentsId, identity);
@@ -1174,7 +1183,6 @@ const createWindow = (
   window.on('minimize', () => repositoryWatcherCoordinator.visibilityChanged(webContentsId));
   window.on('restore', () => repositoryWatcherCoordinator.focus(webContentsId));
   window.on('show', () => repositoryWatcherCoordinator.focus(webContentsId));
-  window.once('ready-to-show', () => window.show());
   let allowClose = false;
   let copyingPendingCommentsBeforeClose = false;
   window.webContents.on('will-prevent-unload', (event) => {
@@ -1245,6 +1253,7 @@ const createWindow = (
     planInitialVersions.delete(webContentsId);
     readyPlanWindows.delete(webContentsId);
     windowIdentities.delete(webContentsId);
+    windowRevealControllers.delete(webContentsId);
     windowInitialRepositoryStates.delete(webContentsId);
     walkthroughProgressGenerations.delete(webContentsId);
     windowRepositories.delete(webContentsId);
@@ -1299,6 +1308,9 @@ const createWindow = (
 
 /** @param {import('electron').BrowserWindow} window */
 const focusWindow = (window) => {
+  if (windowRevealControllers.get(window.webContents.id)?.isPending()) {
+    return;
+  }
   if (window.isMinimized()) {
     window.restore();
   }
@@ -1568,7 +1580,14 @@ if (squirrelStartup || !lock) {
       void updater?.applyLatest().catch(() => {});
     }
 
+    // Model discovery starts a login shell and an agent process. Keep it out
+    // of the initial review's CPU and disk work.
+    setTimeout(() => {
+      if (!quitting && getActiveAgent().id === 'codex') void loadCodexModels();
+    }, 1000).unref();
+
     watchConfig((nextConfig) => {
+      const previousAgent = config.settings.agentBackend;
       config = {
         ...nextConfig,
         settings: {
@@ -1587,9 +1606,8 @@ if (squirrelStartup || !lock) {
       nativeTheme.themeSource = config.settings.theme;
       sendConfigChanged();
       Menu.setApplicationMenu(buildApplicationMenu());
-      if (getActiveAgent().id === 'codex') void loadCodexModels();
+      if (previousAgent !== 'codex' && getActiveAgent().id === 'codex') void loadCodexModels();
     });
-    if (getActiveAgent().id === 'codex') void loadCodexModels();
   });
 
   app.on('will-quit', () => codexModelDiscoveryAbort.abort());
@@ -2086,6 +2104,10 @@ ipcMain.handle('codiff:getKeyboardLayout', () => readKeyboardLayout());
 ipcMain.handle('codiff:isWindowFullScreen', (event) => {
   const window = BrowserWindow.fromWebContents(event.sender);
   return window?.isFullScreen() ?? false;
+});
+
+ipcMain.on('codiff:windowReady', (event) => {
+  windowRevealControllers.get(event.sender.id)?.markContentReady();
 });
 
 ipcMain.handle('codiff:setDiffStyle', (_event, value) => {

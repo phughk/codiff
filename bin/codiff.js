@@ -22,11 +22,6 @@ import { getUpdateNotice } from './update-notice.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
-const {
-  generateAndShareWalkthrough,
-  shareWalkthroughFile,
-} = require('../electron/headless-walkthrough-share.cjs');
-const { sharePlanFile } = require('../electron/headless-plan-share.cjs');
 
 // The renderer is the built dist/ by default. When Codiff's own Vite dev server
 // is running, use it instead so source edits hot-reload without a rebuild. The
@@ -216,6 +211,7 @@ const run = async () => {
 
   if (share) {
     if (planFilePath) {
+      const { sharePlanFile } = require('../electron/headless-plan-share.cjs');
       const sessionId =
         agentBackend === 'claude'
           ? claudeSessionId
@@ -250,6 +246,10 @@ const run = async () => {
       pullRequestUrl,
       range,
     });
+    const {
+      generateAndShareWalkthrough,
+      shareWalkthroughFile,
+    } = require('../electron/headless-walkthrough-share.cjs');
 
     try {
       const commonOptions = {

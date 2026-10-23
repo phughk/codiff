@@ -98,40 +98,8 @@ const joinDiffLines = (lines: ReadonlyArray<string>) =>
   lines.some((line) => line.includes('\n')) ? lines.join('') : lines.join('\n');
 
 export type MarkdownPreviewContents = {
-  addedLines: ReadonlySet<number>;
   contents: string;
-};
-
-const emptyAddedLines = new Set<number>();
-
-const getAddedLineNumbers = (
-  file: ChangedFile,
-  fileDiff: FileDiffMetadata,
-): ReadonlySet<number> => {
-  if (file.status === 'added' || file.status === 'untracked') {
-    return emptyAddedLines;
-  }
-
-  const addedLines = new Set<number>();
-
-  for (const hunk of fileDiff.hunks) {
-    let additionLineNumber = hunk.additionStart;
-
-    for (const content of hunk.hunkContent) {
-      if (content.type === 'context') {
-        additionLineNumber += content.lines;
-        continue;
-      }
-
-      for (let index = 0; index < content.additions; index += 1) {
-        addedLines.add(additionLineNumber + index);
-      }
-
-      additionLineNumber += content.additions;
-    }
-  }
-
-  return addedLines;
+  oldContents?: string;
 };
 
 export const getMarkdownPreviewContents = (
@@ -143,17 +111,23 @@ export const getMarkdownPreviewContents = (
     return null;
   }
 
-  const newFile = section.newFile ?? getLoadedSectionContents(file, section)?.newFile;
-  if (newFile) {
+  const loaded = getLoadedSectionContents(file, section);
+  const newFile = section.newFile ?? loaded?.newFile;
+  const oldFile = section.oldFile ?? loaded?.oldFile;
+  const isNew = (file.status === 'added' || file.status === 'untracked') && !oldFile?.contents;
+  if (newFile && (oldFile || isNew)) {
     return {
-      addedLines: getAddedLineNumbers(file, fileDiff),
       contents: newFile.contents,
+      oldContents: isNew ? undefined : oldFile?.contents,
     };
   }
 
-  return file.status === 'added' || file.status === 'untracked'
+  if (file.status === 'deleted' && oldFile) {
+    return { contents: '', oldContents: oldFile.contents };
+  }
+
+  return isNew
     ? {
-        addedLines: emptyAddedLines,
         contents: joinDiffLines(fileDiff.additionLines),
       }
     : null;
@@ -287,10 +261,12 @@ export const getDiffLineCountTitle = ({ additions, deletions }: DiffLineCount) =
   )}, ${formatLineCountNumber(deletions)} removed ${pluralizeLine(deletions)}`;
 
 const createBinaryFileDiff = (file: ChangedFile, section: DiffSection): FileDiffMetadata => ({
+  additionCharacterCount: `${section.summary?.reason ?? 'Binary file changed.'}\n`.length,
   additionLines: [`${section.summary?.reason ?? 'Binary file changed.'}\n`],
   cacheKey: `summary:${file.fingerprint}:${section.id}:${section.loadState ?? 'binary'}:${
     section.summary?.reason ?? ''
   }`,
+  deletionCharacterCount: 0,
   deletionLines: [],
   hunks: [
     {
@@ -330,8 +306,10 @@ const createBinaryFileDiff = (file: ChangedFile, section: DiffSection): FileDiff
 });
 
 const createEmptyFileDiff = (file: ChangedFile, section: DiffSection): FileDiffMetadata => ({
+  additionCharacterCount: section.newFile?.contents.replaceAll('\n', '').length ?? 0,
   additionLines: section.newFile?.contents.split('\n') ?? [],
   cacheKey: `empty:${file.fingerprint}:${section.id}`,
+  deletionCharacterCount: section.oldFile?.contents.replaceAll('\n', '').length ?? 0,
   deletionLines: section.oldFile?.contents.split('\n') ?? [],
   hunks: [],
   isPartial: false,

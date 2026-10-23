@@ -388,9 +388,11 @@ function PlanCommentRail({
 
 export function PlanEditorView({
   document: initialDocument,
+  onReady,
   shareEnabled = false,
 }: {
   document: CodiffMarkdownDocument;
+  onReady?: () => void;
   shareEnabled?: boolean;
 }) {
   const editorRef = useRef<MarkdownDocumentEditorHandle>(null);
@@ -416,6 +418,11 @@ export function PlanEditorView({
   >([]);
   const [layoutPass, setLayoutPass] = useState(0);
   const [review, setReview] = useState<PlanReview | null>(null);
+  useEffect(() => {
+    if (review) {
+      onReady?.();
+    }
+  }, [onReady, review]);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [sharing, setSharing] = useState(false);

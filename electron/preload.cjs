@@ -2,6 +2,25 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Initialize Chromium's storage connection before showing the native window
+// can block the renderer's first synchronous settings read.
+try {
+  void localStorage.length;
+  void sessionStorage.length;
+} catch {
+  // The bridge must still load when Chromium storage is unavailable.
+}
+
+const launchOptions = ipcRenderer.invoke('codiff:getLaunchOptions');
+/** @type {Promise<import('../core/config/types.ts').CodiffConfig> | undefined} */
+let initialConfig = ipcRenderer.invoke('codiff:getConfig');
+initialConfig.catch(() => {});
+/** @type {Promise<import('../core/types.ts').RepositoryState | undefined> | undefined} */
+let initialRepositoryState = launchOptions.then((options) =>
+  options.planFile ? undefined : ipcRenderer.invoke('codiff:getRepositoryState'),
+);
+initialRepositoryState.catch(() => {});
+
 const applyPlatformAttribute = () => {
   document.documentElement?.setAttribute('data-codiff-platform', process.platform);
 };
@@ -24,21 +43,31 @@ const codiff = {
   updateWalkthroughCommitMessage: (request) =>
     ipcRenderer.invoke('codiff:updateWalkthroughCommitMessage', request),
   getAgentSkillStatus: () => ipcRenderer.invoke('codiff:getAgentSkillStatus'),
-  getConfig: () => ipcRenderer.invoke('codiff:getConfig'),
+  getConfig: () => {
+    const initial = initialConfig;
+    initialConfig = undefined;
+    return initial ?? ipcRenderer.invoke('codiff:getConfig');
+  },
   decreaseCodeFontSize: () => ipcRenderer.invoke('codiff:decreaseCodeFontSize'),
   getDiffSectionContent: (request) => ipcRenderer.invoke('codiff:getDiffSectionContent', request),
   getFeatureFlags: () => ipcRenderer.invoke('codiff:getFeatureFlags'),
   getDiffImageContent: (request) => ipcRenderer.invoke('codiff:getDiffImageContent', request),
   getGitIdentity: () => ipcRenderer.invoke('codiff:getGitIdentity'),
   getKeyboardLayout: () => ipcRenderer.invoke('codiff:getKeyboardLayout'),
-  getLaunchOptions: () => ipcRenderer.invoke('codiff:getLaunchOptions'),
+  getLaunchOptions: () => launchOptions,
   getMarkdownDocument: (request) => ipcRenderer.invoke('codiff:getMarkdownDocument', request),
   getRepositoryFile: (path) => ipcRenderer.invoke('codiff:getRepositoryFile', path),
   getPreferences: () => ipcRenderer.invoke('codiff:getPreferences'),
   getPlanReview: () => ipcRenderer.invoke('codiff:getPlanReview'),
   getRepositoryHistory: (limit, source) =>
     ipcRenderer.invoke('codiff:getRepositoryHistory', limit, source),
-  getRepositoryState: (source) => ipcRenderer.invoke('codiff:getRepositoryState', source),
+  getRepositoryState: (source) => {
+    const initial = source ? undefined : initialRepositoryState;
+    initialRepositoryState = undefined;
+    return initial
+      ? initial.then((state) => state ?? ipcRenderer.invoke('codiff:getRepositoryState', source))
+      : ipcRenderer.invoke('codiff:getRepositoryState', source);
+  },
   getSourceRevision: (source) => ipcRenderer.invoke('codiff:getSourceRevision', source),
   getTerminalHelperStatus: () => ipcRenderer.invoke('codiff:getTerminalHelperStatus'),
   getUpdateStatus: () => ipcRenderer.invoke('codiff:getUpdateStatus'),
@@ -49,6 +78,7 @@ const codiff = {
   increaseCodeFontSize: () => ipcRenderer.invoke('codiff:increaseCodeFontSize'),
   isWindowFullScreen: () => ipcRenderer.invoke('codiff:isWindowFullScreen'),
   markPlanReady: () => ipcRenderer.invoke('codiff:markPlanReady'),
+  markWindowReady: () => ipcRenderer.send('codiff:windowReady'),
   onConfigChanged: (callback) => {
     /** @param {Electron.IpcRendererEvent} _event @param {import('../core/config/types.ts').CodiffConfig} nextConfig */
     const listener = (_event, nextConfig) => callback(nextConfig);

@@ -1,19 +1,6 @@
 {
   "fill": {
-    "linear-gradient": [
-      "display-p3:0.66850,0.71405,1.00000,1.00000",
-      "extended-srgb:0.38039,0.33333,0.96078,1.00000"
-    ],
-    "orientation": {
-      "start": {
-        "x": 0.5,
-        "y": 0
-      },
-      "stop": {
-        "x": 0.5,
-        "y": 0.7
-      }
-    }
+    "solid": "srgb:0.96863,0.93333,0.87451,1.00000"
   },
   "groups": [
     {
@@ -21,22 +8,22 @@
         {
           "blend-mode": "normal",
           "fill": "automatic",
-          "glass": true,
-          "image-name": "octicon--file-diff-24.svg",
-          "name": "octicon--file-diff-24",
+          "glass": false,
+          "image-name": "codiff.svg",
+          "name": "codiff",
           "position": {
-            "scale": 34,
+            "scale": 1,
             "translation-in-points": [0, 0]
           }
         }
       ],
       "shadow": {
         "kind": "neutral",
-        "opacity": 0.5
+        "opacity": 0
       },
       "translucency": {
-        "enabled": true,
-        "value": 0.5
+        "enabled": false,
+        "value": 0
       }
     }
   ],

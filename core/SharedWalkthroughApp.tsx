@@ -5,6 +5,7 @@ import { TreeStructureIcon as TreeStructure } from '@phosphor-icons/react/TreeSt
 import { Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Button } from './app/components/Button.tsx';
+import { DiffSummaryFooter } from './app/components/DiffSummaryFooter.tsx';
 import { ReviewFileTree } from './app/components/FileTree.tsx';
 import {
   MergeRequestCommentsView,
@@ -25,7 +26,6 @@ import {
 } from './app/components/ReviewCodeView.tsx';
 import type { ReviewModeItem } from './app/components/ReviewModeControl.tsx';
 import { ReviewTopBar } from './app/components/ReviewTopBar.tsx';
-import { DiffLineCountBadge } from './app/components/Sidebar.tsx';
 import { NarrativeSidebar } from './app/components/walkthrough/NarrativeSidebar.tsx';
 import {
   NarrativeWalkthroughView,
@@ -46,12 +46,7 @@ import { createDefaultConfig } from './config/defaults.ts';
 import { matchesShortcut } from './config/keymap.ts';
 import { getAgentLabel } from './lib/app-constants.ts';
 import type { CodeViewInstance, ReviewComment, ReviewScrollTarget } from './lib/app-types.ts';
-import {
-  fileHasVisibleDiff,
-  getDiffLineCount,
-  getTotalDiffLineCount,
-  isMarkdownFilePath,
-} from './lib/diff.ts';
+import { fileHasVisibleDiff, isMarkdownFilePath } from './lib/diff.ts';
 import { abbreviateHomePath, fuzzyMatches, sortFiles } from './lib/files.ts';
 import { isNativeInputTarget } from './lib/keyboard.ts';
 import { isGeneratedWalkthroughFile } from './lib/narrative-walkthrough-diff.js';
@@ -431,14 +426,6 @@ export function ReviewSurface({
       ),
     [fileSearchQuery, snapshot.files, snapshot.preferences.showWhitespace],
   );
-  const totalLineCount = useMemo(
-    () =>
-      getTotalDiffLineCount(
-        visibleFiles.map((file) => getDiffLineCount(file, snapshot.preferences.showWhitespace)),
-      ),
-    [snapshot.preferences.showWhitespace, visibleFiles],
-  );
-  const showTotalLineCount = sidebarMode !== 'comments' && totalLineCount.countable;
   const visibleSelectedPath =
     selectedPath && visibleFiles.some((file) => file.path === selectedPath)
       ? selectedPath
@@ -1279,14 +1266,11 @@ export function ReviewSurface({
             </div>
           </div>
         )}
-        {showTotalLineCount ? (
-          <div className="sidebar-settings-bar">
-            <DiffLineCountBadge
-              ariaLabelPrefix="Total change"
-              className="sidebar-total-line-count sidebar-settings-line-count"
-              lineCount={totalLineCount}
-            />
-          </div>
+        {sidebarMode !== 'comments' ? (
+          <DiffSummaryFooter
+            files={visibleFiles}
+            showWhitespace={snapshot.preferences.showWhitespace}
+          />
         ) : null}
       </aside>
       <div aria-hidden className="sidebar-resizer" onPointerDown={resizeSidebar} />

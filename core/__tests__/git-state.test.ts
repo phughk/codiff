@@ -1106,6 +1106,32 @@ test('readRepositoryState uses hidden-whitespace patches for patch-only working 
   });
 });
 
+test('working tree Markdown defers full revisions until requested, preserving staged and unstaged contents', async () => {
+  await withRepo(async (repo) => {
+    await writeRepoFile(repo, 'notes.md', '# Original\n');
+    await commitAll(repo, 'initial commit');
+    await writeRepoFile(repo, 'notes.md', '# Staged\n');
+    await git(repo, ['add', 'notes.md']);
+    await writeRepoFile(repo, 'notes.md', '# Working tree\n');
+
+    const state = await readRepositoryState(repo);
+    expect(state.files[0].sections.map((section) => section.kind)).toEqual(['staged', 'unstaged']);
+    for (const section of state.files[0].sections) {
+      expect(section.oldFile).toBeUndefined();
+      expect(section.newFile).toBeUndefined();
+      expect(section.patch).toContain('-# ');
+      expect(section.patch).toContain('+# ');
+    }
+
+    const staged = await readDiffSectionContent(repo, { kind: 'staged', path: 'notes.md' });
+    const unstaged = await readDiffSectionContent(repo, { kind: 'unstaged', path: 'notes.md' });
+    expect(staged.oldFile?.contents).toBe('# Original\n');
+    expect(staged.newFile?.contents).toBe('# Staged\n');
+    expect(unstaged.oldFile?.contents).toBe('# Staged\n');
+    expect(unstaged.newFile?.contents).toBe('# Working tree\n');
+  });
+});
+
 test('readWorkingTreeState ignores files saved only in the stash', async () => {
   await withRepo(async (repo) => {
     await writeRepoFile(repo, 'tracked.txt', 'tracked\n');

@@ -1,13 +1,14 @@
-import { MarkdownEditor } from '@nkzw/mdx-editor';
+import type { MarkdownEditor as MarkdownEditorComponent } from '@nkzw/mdx-editor';
 import { CheckIcon as Check } from '@phosphor-icons/react/Check';
 import { Copy as LucideCopy } from 'lucide-react';
 import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { Suspense, useCallback, useMemo } from 'react';
 import { renderInlineMarkdown } from '../../lib/markdown.tsx';
+import { MarkdownEditor } from './LazyMarkdownEditor.tsx';
 import { MermaidDiagram } from './MermaidDiagram.tsx';
 import { useCopiedState } from './useCopiedState.ts';
 
-type MarkdownEditorProps = ComponentProps<typeof MarkdownEditor>;
+type MarkdownEditorProps = ComponentProps<typeof MarkdownEditorComponent>;
 
 type MarkdownDetailsPart = {
   body: string;

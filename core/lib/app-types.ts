@@ -25,10 +25,10 @@ export type CodeQualityAnnotationMetadata = {
 };
 
 type MarkdownPreviewAnnotationMetadata = {
-  addedLines: ReadonlySet<number>;
   contents: string;
-  editable: boolean;
+  editing: boolean;
   layoutKey: string;
+  oldContents?: string;
   path: string;
   sectionId: string;
   type: 'markdown-preview';

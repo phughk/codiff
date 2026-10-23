@@ -1,10 +1,11 @@
-import { registerCustomTheme, setCustomExtension } from '@pierre/diffs';
+import { preloadHighlighter, registerCustomTheme, setCustomExtension } from '@pierre/diffs';
+import { getOrCreateWorkerPoolSingleton } from '@pierre/diffs/worker';
 import dunkelTheme from '../themes/dunkel.json' with { type: 'json' };
 import lichtTheme from '../themes/licht.json' with { type: 'json' };
 import type { DiffSection } from '../types.ts';
 
-registerCustomTheme('Licht', async () => lichtTheme as never);
-registerCustomTheme('Dunkel', async () => dunkelTheme as never);
+registerCustomTheme('Licht', async () => lichtTheme as never, 'zed');
+registerCustomTheme('Dunkel', async () => dunkelTheme as never, 'zed');
 setCustomExtension('cts', 'typescript');
 setCustomExtension('mts', 'typescript');
 
@@ -38,6 +39,7 @@ export const diffCollapsedContextThreshold = 12;
 
 export const workerHighlighterOptions = {
   maxLineDiffLength: 2000,
+  preferredHighlighter: 'highlights' as const,
   theme: {
     dark: 'Dunkel',
     light: 'Licht',
@@ -49,6 +51,38 @@ export const workerHighlighterOptions = {
 };
 
 export const maxWorkerThreads = 3;
+
+export const getCodeViewWorkerPoolOptions = () => ({
+  mainThreadMaxCharacters: 100_000,
+  poolSize: Math.min(
+    maxWorkerThreads,
+    Math.max(1, navigator.hardwareConcurrency || maxWorkerThreads),
+  ),
+  workerFactory: () =>
+    new Worker(new URL('@pierre/diffs/worker/worker.js', import.meta.url), {
+      type: 'module',
+    }),
+});
+
+export const preloadCodeView = () => {
+  void document.fonts.load('13px "Fira Code"').catch(() => {});
+  void getOrCreateWorkerPoolSingleton({
+    highlighterOptions: workerHighlighterOptions,
+    poolOptions: getCodeViewWorkerPoolOptions(),
+  })
+    .initialize()
+    .catch(() => {});
+  void preloadCodeViewHighlighter().catch(() => {});
+};
+
+// File metadata is fetched over IPC before CodeView mounts. Use that time to
+// load the shared highlighter that small diffs will need on the main thread.
+export const preloadCodeViewHighlighter = () =>
+  preloadHighlighter({
+    langs: ['text'],
+    preferredHighlighter: workerHighlighterOptions.preferredHighlighter,
+    themes: ['Licht', 'Dunkel'],
+  });
 
 export const codeViewUnsafeCSS = `
   :host {

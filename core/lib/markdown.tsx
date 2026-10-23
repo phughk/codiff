@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useContext } from 'react';
+import { MarkdownImageSourceContext } from './markdownImageSource.ts';
 
 const renderText = (value: string, keyPrefix: string): Array<ReactNode> => {
   const textNodes: Array<ReactNode> = [];
@@ -74,6 +75,31 @@ const getHtmlAttribute = (html: string, name: string) => {
 
 const getImageDimension = (value: string) => (/^\d{1,5}$/.test(value) ? value : undefined);
 
+const MarkdownImage = ({
+  alt,
+  height,
+  source,
+  width,
+}: {
+  alt: string;
+  height?: string;
+  source: string;
+  width?: string;
+}) => {
+  const resolveImageSource = useContext(MarkdownImageSourceContext);
+  return (
+    <img
+      alt={alt}
+      className="codiff-markdown-image"
+      decoding="async"
+      height={height}
+      loading="lazy"
+      src={resolveImageSource ? resolveImageSource(source) : source}
+      width={width}
+    />
+  );
+};
+
 const renderImage = (
   source: string,
   alt: string,
@@ -85,18 +111,7 @@ const renderImage = (
     return null;
   }
 
-  return (
-    <img
-      alt={alt}
-      className="codiff-markdown-image"
-      decoding="async"
-      height={dimensions.height}
-      key={key}
-      loading="lazy"
-      src={safeSource}
-      width={dimensions.width}
-    />
-  );
+  return <MarkdownImage alt={alt} key={key} source={safeSource} {...dimensions} />;
 };
 
 export const sanitizeMarkdownImages = (text: string): string =>

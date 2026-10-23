@@ -1,4 +1,4 @@
-import { MarkdownEditor, type MarkdownEditorHandle } from '@nkzw/mdx-editor';
+import type { MarkdownEditorHandle } from '@nkzw/mdx-editor';
 import { CaretDownIcon as CaretDown } from '@phosphor-icons/react/CaretDown';
 import { CaretUpIcon as CaretUp } from '@phosphor-icons/react/CaretUp';
 import { ChatCircleIcon as ChatCircle } from '@phosphor-icons/react/ChatCircle';
@@ -34,6 +34,7 @@ import type {
 import type { AgentReviewState } from '../hooks/useAppReviewComments.ts';
 import { agentIconUrl } from './agentIcon.ts';
 import { Button, buttonVariants } from './Button.tsx';
+import { MarkdownEditor } from './LazyMarkdownEditor.tsx';
 import { useCopiedState } from './useCopiedState.ts';
 
 export function ReviewSourceLoading() {
@@ -731,6 +732,7 @@ function PullRequestReviewAction({
         >
           <MarkdownEditor
             ariaLabel={commentLabel}
+            autoFocus
             className="review-comment-markdown-editor review-submit-popover-editor"
             colorScheme="inherit"
             contentClassName="review-comment-input general-comment-input"
