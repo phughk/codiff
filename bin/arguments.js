@@ -121,6 +121,10 @@ const usageExamples = [
   },
   { command: 'codiff mr 75', description: 'Review GitLab merge request !75.' },
   { command: 'codiff update', description: 'Update Codiff to the latest release.' },
+  {
+    command: 'codiff sessions',
+    description: 'Print draft review comments from open windows as JSON.',
+  },
   { command: 'codiff --plan plan.md', description: 'Edit a plan and wait for handoff.' },
   { command: 'codiff --plan plan.md --share', description: 'Share a Markdown plan.' },
   { command: 'codiff -w', description: 'Walk through local changes, or HEAD when clean.' },

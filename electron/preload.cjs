@@ -104,6 +104,17 @@ const codiff = {
     ipcRenderer.on('codiff:copyPendingCommentsRequest', listener);
     return () => ipcRenderer.removeListener('codiff:copyPendingCommentsRequest', listener);
   },
+  onPendingCommentsRequest: (callback) => {
+    /** @param {Electron.IpcRendererEvent} _event @param {number} requestId */
+    const listener = (_event, requestId) => {
+      Promise.resolve(callback()).then(
+        (comments) => ipcRenderer.send('codiff:pendingCommentsResult', requestId, comments),
+        () => ipcRenderer.send('codiff:pendingCommentsResult', requestId, null),
+      );
+    };
+    ipcRenderer.on('codiff:pendingCommentsRequest', listener);
+    return () => ipcRenderer.removeListener('codiff:pendingCommentsRequest', listener);
+  },
   onEditReviewPrompt: (callback) => {
     const listener = () => callback();
     ipcRenderer.on('codiff:editReviewPrompt', listener);

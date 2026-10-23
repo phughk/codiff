@@ -198,6 +198,12 @@ if (rawArgs[0] === '--resolve-plan-comments') {
   process.exit(0);
 }
 
+// `--sessions [path]`: print the draft review comments of every open Codiff window as JSON.
+if (rawArgs[0] === '--sessions') {
+  const { runSessionsCommand } = await import(join(codiffRoot, 'bin/sessions-command.js'));
+  process.exit(await runSessionsCommand(rawArgs.slice(1)));
+}
+
 // `--guide`: print Codiff's current walkthrough authoring guide and exit. The
 // guidance lives in Codiff (not this skill), so it stays current across updates.
 if (rawArgs.includes('--guide')) {

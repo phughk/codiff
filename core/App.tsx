@@ -95,6 +95,7 @@ import {
 } from './lib/reload-selection.ts';
 import { resolveReviewCommandTarget } from './lib/review-command-target.ts';
 import {
+  buildReviewCommentsExport,
   buildReviewCommentsMarkdown,
   getRefreshedReviewComments,
   getReviewCommentsFromState,
@@ -1303,6 +1304,21 @@ export default function App({
     });
     return removeListener;
   }, [reviewCommentsRef]);
+
+  useEffect(
+    () =>
+      window.codiff.onPendingCommentsRequest(() => {
+        const currentState = stateRef.current;
+        return currentState
+          ? buildReviewCommentsExport(
+              currentState.files,
+              reviewCommentsRef.current,
+              preferencesRef.current.showWhitespace,
+            )
+          : [];
+      }),
+    [reviewCommentsRef],
+  );
 
   useEffect(() => {
     void window.codiff.isWindowFullScreen().then(setIsWindowFullScreen, () => {});

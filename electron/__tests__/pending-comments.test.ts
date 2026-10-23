@@ -31,6 +31,12 @@ const { createPendingCommentsClipboardController } = require('../pending-comment
       requestId: number,
       markdown: unknown,
     ) => void;
+    handlePendingCommentsResult: (
+      event: { sender: { id: number } },
+      requestId: number,
+      comments: unknown,
+    ) => void;
+    requestPendingComments: (browserWindow: FakeBrowserWindow) => Promise<unknown>;
     requestPendingCommentsMarkdown: (browserWindow: FakeBrowserWindow) => Promise<string>;
   };
 };
@@ -128,4 +134,31 @@ test('ignores pending comment responses from the wrong window', async () => {
   controller.handleCopyPendingCommentsResult({ sender: { id: 1 } }, 1, 'Right window.');
 
   await expect(markdownPromise).resolves.toBe('Right window.');
+});
+
+test('requests structured pending comments for codiff-sessions', async () => {
+  const controller = createPendingCommentsClipboardController({
+    clipboard: { writeText: () => {} },
+  });
+  const window = createFakeWindow(4);
+  const comments = [{ body: 'Rename this.', id: 'a' }];
+
+  const request = controller.requestPendingComments(window.browserWindow);
+
+  expect(window.sentMessages).toEqual([{ channel: 'codiff:pendingCommentsRequest', requestId: 1 }]);
+  controller.handlePendingCommentsResult({ sender: { id: 5 } }, 1, []);
+  controller.handlePendingCommentsResult({ sender: { id: 4 } }, 1, comments);
+
+  await expect(request).resolves.toBe(comments);
+});
+
+test('resolves null when a window does not return pending comments', async () => {
+  const controller = createPendingCommentsClipboardController({
+    clipboard: { writeText: () => {} },
+    timeoutMs: 1,
+  });
+
+  await expect(controller.requestPendingComments(createFakeWindow(1).browserWindow)).resolves.toBe(
+    null,
+  );
 });

@@ -434,32 +434,44 @@ const getReviewCommentPatchContext = (
   return section.summary?.reason || section.patch.trim() || 'No patch context available.';
 };
 
+const getOrderedReviewDraftComments = (
+  files: ReadonlyArray<ChangedFile>,
+  comments: ReadonlyArray<ReviewComment>,
+  showWhitespace: boolean,
+) => {
+  const filesByPath = new Map(files.map((file) => [file.path, file]));
+  return comments
+    .filter(isReviewDraftComment)
+    .sort((left, right) => {
+      const leftFileIndex = files.findIndex((file) => file.path === left.filePath);
+      const rightFileIndex = files.findIndex((file) => file.path === right.filePath);
+      return (
+        leftFileIndex - rightFileIndex ||
+        (left.lineNumber ?? 0) - (right.lineNumber ?? 0) ||
+        left.id.localeCompare(right.id)
+      );
+    })
+    .map((comment) => {
+      const file = filesByPath.get(comment.filePath);
+      const section = file?.sections.find((candidate) => candidate.id === comment.sectionId);
+      return {
+        comment,
+        context:
+          file && section
+            ? getReviewCommentPatchContext(file, section, comment, showWhitespace)
+            : 'No patch context available.',
+      };
+    });
+};
+
 export const buildReviewCommentsMarkdown = (
   files: ReadonlyArray<ChangedFile>,
   comments: ReadonlyArray<ReviewComment>,
   showWhitespace: boolean,
   prefix?: string,
 ) => {
-  const pendingComments = comments.filter(isReviewDraftComment);
-  const filesByPath = new Map(files.map((file) => [file.path, file]));
-  const orderedComments = pendingComments.sort((left, right) => {
-    const leftFileIndex = files.findIndex((file) => file.path === left.filePath);
-    const rightFileIndex = files.findIndex((file) => file.path === right.filePath);
-    return (
-      leftFileIndex - rightFileIndex ||
-      (left.lineNumber ?? 0) - (right.lineNumber ?? 0) ||
-      left.id.localeCompare(right.id)
-    );
-  });
-
-  const markdown = orderedComments
-    .map((comment, index) => {
-      const file = filesByPath.get(comment.filePath);
-      const section = file?.sections.find((candidate) => candidate.id === comment.sectionId);
-      const context =
-        file && section
-          ? getReviewCommentPatchContext(file, section, comment, showWhitespace)
-          : 'No patch context available.';
+  const markdown = getOrderedReviewDraftComments(files, comments, showWhitespace)
+    .map(({ comment, context }, index) => {
       const fence = getMarkdownFence(context);
 
       return [
@@ -476,6 +488,47 @@ export const buildReviewCommentsMarkdown = (
     prefix == null ? '# Address these Review Comments\n\n' : prefix ? `${prefix}\n\n` : '';
   return markdown ? `${resolvedPrefix}${markdown}` : '';
 };
+
+export type PendingReviewCommentExport = {
+  anchor: 'file' | 'line';
+  body: string;
+  diff: string;
+  filePath: string;
+  id: string;
+  lineNumber?: number;
+  location: string;
+  side?: 'additions' | 'deletions';
+  startLineNumber?: number;
+  startSide?: 'additions' | 'deletions';
+};
+
+/** Draft comments as JSON for `codiff-sessions`, in the same order as the Markdown export. */
+export const buildReviewCommentsExport = (
+  files: ReadonlyArray<ChangedFile>,
+  comments: ReadonlyArray<ReviewComment>,
+  showWhitespace: boolean,
+): ReadonlyArray<PendingReviewCommentExport> =>
+  getOrderedReviewDraftComments(files, comments, showWhitespace).map(({ comment, context }) => {
+    const isFileComment = isFileReviewComment(comment);
+    const startSide = getReviewCommentStartSide(comment);
+    return {
+      anchor: isFileComment ? 'file' : 'line',
+      body: comment.body.trim(),
+      diff: context,
+      filePath: comment.filePath,
+      id: comment.id,
+      location: getReviewCommentLineLabel(comment),
+      ...(isFileComment
+        ? {}
+        : {
+            lineNumber: comment.lineNumber,
+            side: comment.side,
+            ...(comment.startLineNumber != null && startSide
+              ? { startLineNumber: comment.startLineNumber, startSide }
+              : {}),
+          }),
+    };
+  });
 
 export const getReviewCommentsFromState = (state: RepositoryState): ReadonlyArray<ReviewComment> =>
   (state.reviewComments ?? []).flatMap((comment) => {

@@ -16,6 +16,7 @@ const commitCommand = (format) =>
 const keywords = [
   { description: 'Review a GitLab merge request.', name: 'mr' },
   { description: 'Review a GitHub pull request.', name: 'pr' },
+  { description: 'Print draft review comments from open windows as JSON.', name: 'sessions' },
   { description: 'Update Codiff to the latest release.', name: 'update' },
 ];
 

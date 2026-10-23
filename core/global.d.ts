@@ -1,5 +1,6 @@
 import type { NativeKeyboardLayout } from './config/keyboard-layout.ts';
 import type { CodiffConfig } from './config/types.ts';
+import type { PendingReviewCommentExport } from './lib/review-comments.ts';
 import type {
   AgentReviewRequest,
   AgentReviewResult,
@@ -104,6 +105,9 @@ declare global {
         ) => void,
       ) => () => void;
       onOpenReviewSource: (callback: (kind: OpenReviewSourceKind) => void) => () => void;
+      onPendingCommentsRequest: (
+        callback: () => ReadonlyArray<PendingReviewCommentExport>,
+      ) => () => void;
       onPlanCloseRequested: (callback: () => void) => () => void;
       onRefreshRequest: (callback: () => void) => () => void;
       onRepositoryChanged: (callback: (change: { root: string }) => void) => () => void;

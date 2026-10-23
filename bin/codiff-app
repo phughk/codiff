@@ -192,6 +192,7 @@ show_help() {
   printf '%s\n' "${blue_bold}Usage:${reset} ${gray}codiff [options] [<ref> | <pr> | <url>] [path]${reset}"
   printf '\n'
   printf '%s\n' "${blue_bold}Commands:${reset}"
+  printf '  %-38s%s%s%s\n' "sessions [path]" "$gray" "Print open windows' draft review comments as JSON." "$reset"
   printf '  %-38s%s%s%s\n' "update" "$gray" "Update Codiff to the latest release." "$reset"
   printf '\n'
   printf '%s\n' "${blue_bold}Options:${reset}"
@@ -247,6 +248,12 @@ resolve_runtime() {
 if [ "$#" -eq 1 ] && [ "$1" = "update" ]; then
   resolve_runtime update
   ELECTRON_RUN_AS_NODE=1 exec "$runtime" "$script_dir/codiff.js" update
+fi
+
+# `codiff sessions` prints the draft comments of every open window as JSON.
+if [ "$#" -ge 1 ] && [ "$1" = "sessions" ]; then
+  resolve_runtime sessions
+  ELECTRON_RUN_AS_NODE=1 exec "$runtime" "$script_dir/codiff.js" "$@"
 fi
 
 # Flags the Node entry owns: it does the work and prints the result, so this

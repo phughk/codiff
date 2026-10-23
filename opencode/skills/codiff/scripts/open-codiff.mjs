@@ -187,6 +187,12 @@ if (rawArgs[0] === '--resolve-plan-comments') {
   process.exit(0);
 }
 
+// `--sessions [path]`: print the draft review comments of every open Codiff window as JSON.
+if (rawArgs[0] === '--sessions') {
+  const { runSessionsCommand } = await import(join(codiffRoot, 'bin/sessions-command.js'));
+  process.exit(await runSessionsCommand(rawArgs.slice(1)));
+}
+
 if (rawArgs.includes('--guide')) {
   const binEntry = join(codiffRoot, 'bin/codiff.js');
   const guide = existsSync(binEntry)

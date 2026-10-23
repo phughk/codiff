@@ -17,6 +17,7 @@ import {
 } from './arguments.js';
 import { completionShells, generateCompletionScript } from './completions.js';
 import { waitForPlanResult } from './plan-result.js';
+import { runSessionsCommand } from './sessions-command.js';
 import { runUpdateCommand } from './update-command.js';
 import { getUpdateNotice } from './update-notice.js';
 
@@ -123,6 +124,10 @@ const run = async () => {
   const rawArguments = process.argv.slice(2);
   if (rawArguments.length === 1 && rawArguments[0] === 'update') {
     process.exitCode = await runCodiffUpdate();
+    return;
+  }
+  if (rawArguments[0] === 'sessions') {
+    process.exitCode = await runSessionsCommand(rawArguments.slice(1));
     return;
   }
 

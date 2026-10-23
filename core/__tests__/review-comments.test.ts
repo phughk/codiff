@@ -1,6 +1,7 @@
 import { expect, test } from 'vite-plus/test';
 import type { ReviewComment } from '../lib/app-types.ts';
 import {
+  buildReviewCommentsExport,
   buildReviewCommentsMarkdown,
   findReusableReviewCommentDraft,
   getPendingPullRequestReviewComments,
@@ -149,6 +150,55 @@ test('agent conversations stay out of the review and copied comments', () => {
   const markdown = buildReviewCommentsMarkdown([], comments, false);
   expect(markdown).toContain('Rename this.');
   expect(markdown).not.toContain('Why this cache?');
+});
+
+test('buildReviewCommentsExport returns ordered drafts with their location', () => {
+  const comments = [
+    createReviewComment({ body: '  Second.  ', id: 'second', lineNumber: 9 }),
+    createReviewComment({
+      body: 'First.',
+      id: 'first',
+      lineNumber: 4,
+      startLineNumber: 2,
+      startSide: 'additions',
+    }),
+    createReviewComment({ anchor: 'file', body: 'Whole file.', id: 'file', lineNumber: undefined }),
+    createReviewComment({ body: 'Remote.', id: 'remote', isReadOnly: true }),
+    createReviewComment({ body: 'Why this cache?', codexReply: { status: 'loading' }, id: 'ask' }),
+  ];
+
+  expect(buildReviewCommentsExport([], comments, false)).toEqual([
+    {
+      anchor: 'file',
+      body: 'Whole file.',
+      diff: 'No patch context available.',
+      filePath: 'src/a.ts',
+      id: 'file',
+      location: 'File',
+    },
+    {
+      anchor: 'line',
+      body: 'First.',
+      diff: 'No patch context available.',
+      filePath: 'src/a.ts',
+      id: 'first',
+      lineNumber: 4,
+      location: 'New lines 2-4',
+      side: 'additions',
+      startLineNumber: 2,
+      startSide: 'additions',
+    },
+    {
+      anchor: 'line',
+      body: 'Second.',
+      diff: 'No patch context available.',
+      filePath: 'src/a.ts',
+      id: 'second',
+      lineNumber: 9,
+      location: 'New line 9',
+      side: 'additions',
+    },
+  ]);
 });
 
 test('getPendingPullRequestReviewComments replaces a stale flushed draft', () => {

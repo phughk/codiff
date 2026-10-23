@@ -13,7 +13,8 @@
     "url": "https://github.com/nkzw-tech/codiff.git"
   },
   "bin": {
-    "codiff": "./bin/codiff.js"
+    "codiff": "./bin/codiff.js",
+    "codiff-sessions": "./bin/codiff-sessions.js"
   },
   "files": [
     "bin",

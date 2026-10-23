@@ -24,7 +24,7 @@ const DEFAULT_COPY_PENDING_COMMENTS_TIMEOUT_MS = 2000;
  */
 /**
  * @typedef {{
- *   resolve: (markdown: string) => void;
+ *   resolve: (result: unknown) => void;
  *   webContentsId: number;
  * }} PendingCommentsRequest
  */
@@ -48,23 +48,27 @@ const createPendingCommentsClipboardController = ({
   /**
    * @param {PendingCommentsIpcEvent} event
    * @param {number} requestId
-   * @param {unknown} markdown
+   * @param {unknown} result
    */
-  const handleCopyPendingCommentsResult = (event, requestId, markdown) => {
+  const handleResult = (event, requestId, result) => {
     const pending = pendingRequests.get(requestId);
     if (!pending || pending.webContentsId !== event.sender.id) {
       return;
     }
 
     pendingRequests.delete(requestId);
-    pending.resolve(typeof markdown === 'string' ? markdown : '');
+    pending.resolve(result);
   };
 
-  /** @param {PendingCommentsBrowserWindow} browserWindow */
-  const requestPendingCommentsMarkdown = (browserWindow) =>
+  /**
+   * @param {PendingCommentsBrowserWindow} browserWindow
+   * @param {string} channel
+   * @returns {Promise<unknown>}
+   */
+  const request = (browserWindow, channel) =>
     new Promise((resolve) => {
       if (browserWindow.isDestroyed() || browserWindow.webContents.isDestroyed()) {
-        resolve('');
+        resolve(null);
         return;
       }
 
@@ -72,20 +76,42 @@ const createPendingCommentsClipboardController = ({
       const webContentsId = browserWindow.webContents.id;
       const timeout = setTimeout(() => {
         if (pendingRequests.delete(requestId)) {
-          resolve('');
+          resolve(null);
         }
       }, timeoutMs);
 
       pendingRequests.set(requestId, {
-        resolve: (markdown) => {
+        resolve: (result) => {
           clearTimeout(timeout);
-          resolve(markdown);
+          resolve(result);
         },
         webContentsId,
       });
 
-      browserWindow.webContents.send('codiff:copyPendingCommentsRequest', requestId);
+      browserWindow.webContents.send(channel, requestId);
     });
+
+  /**
+   * @param {PendingCommentsIpcEvent} event
+   * @param {number} requestId
+   * @param {unknown} markdown
+   */
+  const handleCopyPendingCommentsResult = (event, requestId, markdown) =>
+    handleResult(event, requestId, typeof markdown === 'string' ? markdown : '');
+
+  /** @param {PendingCommentsBrowserWindow} browserWindow @returns {Promise<string>} */
+  const requestPendingCommentsMarkdown = async (browserWindow) => {
+    const markdown = await request(browserWindow, 'codiff:copyPendingCommentsRequest');
+    return typeof markdown === 'string' ? markdown : '';
+  };
+
+  /**
+   * Structured draft comments for `codiff-sessions`. Resolves `null` when the window
+   * does not answer in time.
+   * @param {PendingCommentsBrowserWindow} browserWindow
+   */
+  const requestPendingComments = (browserWindow) =>
+    request(browserWindow, 'codiff:pendingCommentsRequest');
 
   /** @param {ReadonlyArray<PendingCommentsBrowserWindow>} browserWindows */
   const copyPendingCommentsToClipboard = async (browserWindows) => {
@@ -101,6 +127,8 @@ const createPendingCommentsClipboardController = ({
   return {
     copyPendingCommentsToClipboard,
     handleCopyPendingCommentsResult,
+    handlePendingCommentsResult: handleResult,
+    requestPendingComments,
     requestPendingCommentsMarkdown,
   };
 };

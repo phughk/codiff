@@ -1,6 +1,6 @@
 ---
 name: codiff
-description: Open Codiff for a narrative code walkthrough, a blocking plan handoff, or a shared walkthrough URL. Use when the user writes "$codiff", "/codiff", "$codiff plan", "$codiff share", "show me codiff", "open Codiff", or asks to review a change or edit a plan in Codiff.
+description: Open Codiff for a narrative code walkthrough, a blocking plan handoff, or a shared walkthrough URL, or read the review comments left in open Codiff windows. Use when the user writes "$codiff", "/codiff", "$codiff plan", "$codiff share", "show me codiff", "open Codiff", asks to review a change or edit a plan in Codiff, or asks to get, address, or resolve Codiff comments.
 metadata:
   short-description: Review code or hand off a plan in Codiff
 ---
@@ -24,9 +24,32 @@ change. Codiff owns the format and authoring guidance, so this skill only handle
   walkthrough.
 - Use **plan mode** for `$codiff plan` or when the user explicitly asks to edit or approve a
   plan in Codiff before execution.
+- Use **comments mode** when the user asks to get, address, fix, or resolve the comments they
+  left in Codiff.
 - Use **desktop mode** for plain `$codiff`, `/codiff`, "open Codiff", or "show me Codiff".
 - In share mode, only pass `--open` when the user explicitly asks to open the resulting share in
   a browser. Otherwise return the URL without opening it.
+
+## Comments Mode
+
+1. Read the outstanding draft comments from every open Codiff window, limited to the current
+   repository:
+
+   ```bash
+   node scripts/open-codiff.mjs --sessions /path/to/repository
+   ```
+
+   Omit the path to include every open window. The JSON has `running` (false when Codiff is not
+   open) and `sessions`, one per window. Each session has its `repositoryRoot`, `source` (what the
+   window reviews), and `comments`. Each comment has `filePath`, `location` (for example
+   `New lines 12-14` or `File`), `lineNumber`/`side` (`additions` is the new file, `deletions` the
+   old one), `body`, and `diff`, the hunk excerpt the comment was left on.
+
+2. Treat each comment `body` as user direction for the code at its location. Line numbers on
+   `additions` refer to the file as it was when the comment was written; use the `diff` excerpt
+   to find the code if it has moved.
+3. Apply the changes, then summarize which comments were addressed and which were skipped or
+   need clarification. The user removes handled comments in Codiff.
 
 ## Plan Mode
 

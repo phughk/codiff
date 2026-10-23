@@ -76,6 +76,7 @@ const {
   getWindowIdentity,
   getWindowIdentityForRepositoryState,
 } = require('./window-identity.cjs');
+const { startSessionsServer } = require('./codiff-sessions.cjs');
 const { createPendingCommentsClipboardController } = require('./pending-comments.cjs');
 const {
   getCommandLineLaunchOptions,
@@ -1071,6 +1072,38 @@ ipcMain.on(
   'codiff:copyPendingCommentsResult',
   pendingCommentsClipboardController.handleCopyPendingCommentsResult,
 );
+ipcMain.on(
+  'codiff:pendingCommentsResult',
+  pendingCommentsClipboardController.handlePendingCommentsResult,
+);
+
+/** @type {ReturnType<typeof startSessionsServer> | null} */
+let sessionsServer = null;
+
+// Answers `codiff-sessions` with the draft review comments of every open review window.
+const listSessions = async () => {
+  const windows = [...openWindows].filter(
+    (window) =>
+      !window.isDestroyed() &&
+      !window.webContents.isDestroyed() &&
+      !windowLaunchOptions.get(window.webContents.id)?.planFile,
+  );
+  const sessions = await Promise.all(
+    windows.map(async (window) => {
+      const webContentsId = window.webContents.id;
+      const comments = await pendingCommentsClipboardController.requestPendingComments(window);
+      return {
+        comments: Array.isArray(comments) ? comments : [],
+        id: webContentsId,
+        repositoryRoot: windowRepositories.get(webContentsId) ?? null,
+        responded: Array.isArray(comments),
+        source: windowSources.get(webContentsId) ?? null,
+        title: window.getTitle(),
+      };
+    }),
+  );
+  return sessions;
+};
 
 /**
  * @param {string} repositoryPath
@@ -1543,6 +1576,11 @@ if (squirrelStartup || !lock) {
 
   app.on('ready', () => {
     migrateFromPreferences(app.getPath('userData'), normalizeOpenAIModel);
+    try {
+      sessionsServer = startSessionsServer({ listSessions });
+    } catch {
+      // `codiff-sessions` is optional; the app works without its socket.
+    }
     const shouldDetectInitialAgent = !existsSync(getConfigPath());
     config = readConfig();
     config.settings.openAIModel = normalizeOpenAIModel(config.settings.openAIModel);
@@ -1610,7 +1648,10 @@ if (squirrelStartup || !lock) {
     });
   });
 
-  app.on('will-quit', () => codexModelDiscoveryAbort.abort());
+  app.on('will-quit', () => {
+    codexModelDiscoveryAbort.abort();
+    sessionsServer?.close();
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
