@@ -104,17 +104,6 @@ const codiff = {
     ipcRenderer.on('codiff:copyPendingCommentsRequest', listener);
     return () => ipcRenderer.removeListener('codiff:copyPendingCommentsRequest', listener);
   },
-  onPendingCommentsRequest: (callback) => {
-    /** @param {Electron.IpcRendererEvent} _event @param {number} requestId */
-    const listener = (_event, requestId) => {
-      Promise.resolve(callback()).then(
-        (comments) => ipcRenderer.send('codiff:pendingCommentsResult', requestId, comments),
-        () => ipcRenderer.send('codiff:pendingCommentsResult', requestId, null),
-      );
-    };
-    ipcRenderer.on('codiff:pendingCommentsRequest', listener);
-    return () => ipcRenderer.removeListener('codiff:pendingCommentsRequest', listener);
-  },
   onEditReviewPrompt: (callback) => {
     const listener = () => callback();
     ipcRenderer.on('codiff:editReviewPrompt', listener);
@@ -146,6 +135,32 @@ const codiff = {
     const listener = () => callback();
     ipcRenderer.on('codiff:planCloseRequested', listener);
     return () => ipcRenderer.removeListener('codiff:planCloseRequested', listener);
+  },
+  onSessionCommentReplyRequest: (callback) => {
+    /** @param {Electron.IpcRendererEvent} _event @param {number} requestId @param {unknown} reply */
+    const listener = (_event, requestId, reply) => {
+      Promise.resolve(callback(reply)).then(
+        (result) => ipcRenderer.send('codiff:rendererRequestResult', requestId, result),
+        (error) =>
+          ipcRenderer.send('codiff:rendererRequestResult', requestId, {
+            reason: error instanceof Error ? error.message : String(error),
+            status: 'error',
+          }),
+      );
+    };
+    ipcRenderer.on('codiff:sessionCommentReplyRequest', listener);
+    return () => ipcRenderer.removeListener('codiff:sessionCommentReplyRequest', listener);
+  },
+  onSessionCommentsRequest: (callback) => {
+    /** @param {Electron.IpcRendererEvent} _event @param {number} requestId */
+    const listener = (_event, requestId) => {
+      Promise.resolve(callback()).then(
+        (comments) => ipcRenderer.send('codiff:rendererRequestResult', requestId, comments),
+        () => ipcRenderer.send('codiff:rendererRequestResult', requestId, null),
+      );
+    };
+    ipcRenderer.on('codiff:sessionCommentsRequest', listener);
+    return () => ipcRenderer.removeListener('codiff:sessionCommentsRequest', listener);
   },
   onWalkthroughCommitOutput: (callback) => {
     /** @param {Electron.IpcRendererEvent} _event @param {string} chunk */

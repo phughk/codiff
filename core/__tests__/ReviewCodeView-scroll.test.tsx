@@ -2112,6 +2112,79 @@ test('adds a pull request comment to the pending review from the comment actions
   expect(onSubmitComment).not.toHaveBeenCalled();
 });
 
+test('moves a comment into the agent session from the comment actions', async () => {
+  const file = createChangedFile('src/comment.ts');
+  const onToggleSessionComment = vi.fn();
+  await using view = await renderReact(
+    <ReviewCodeViewHarness
+      comments={[
+        {
+          body: 'Claude, simplify this.',
+          filePath: file.path,
+          id: 'comment-1',
+          lineNumber: 1,
+          sectionId: file.sections[0].id,
+          side: 'additions',
+        },
+      ]}
+      diffStyle="unified"
+      files={[file]}
+      onToggleSessionComment={onToggleSessionComment}
+      supportsReviewCommentActions
+    />,
+  );
+  const sessionButton = [
+    ...view.container.querySelectorAll<HTMLButtonElement>('.review-comment button'),
+  ].find((button) => button.textContent === 'Session');
+  if (!sessionButton) {
+    throw new Error('Expected a Session button on the draft comment.');
+  }
+  expect(sessionButton.getAttribute('aria-pressed')).toBe('false');
+
+  await act(async () => {
+    sessionButton.click();
+  });
+  expect(onToggleSessionComment).toHaveBeenCalledWith('comment-1');
+});
+
+test('shows session comments with their agent replies and without review actions', async () => {
+  const file = createChangedFile('src/comment.ts');
+  await using view = await renderReact(
+    <ReviewCodeViewHarness
+      comments={[
+        {
+          body: 'Claude, simplify this.',
+          filePath: file.path,
+          id: 'comment-1',
+          lineNumber: 1,
+          sectionId: file.sections[0].id,
+          session: { replies: [{ agentId: 'claude', body: 'Simplified it.', createdAt: 1 }] },
+          side: 'additions',
+        },
+      ]}
+      diffStyle="unified"
+      files={[file]}
+      onSubmitPendingComment={() => {}}
+      onToggleSessionComment={() => {}}
+      supportsReviewCommentActions
+    />,
+  );
+
+  const sessionComment = view.container.querySelector('.review-comment-session');
+  expect(sessionComment).not.toBe(null);
+  const labels = [...(sessionComment?.querySelectorAll('button') ?? [])].map(
+    (button) => button.textContent,
+  );
+  expect(labels).toContain('Session');
+  expect(labels).not.toContain('Comment');
+  expect(labels).not.toContain('Add to review');
+  expect(labels).not.toContain('Ask');
+  await waitFor(() => {
+    expect(sessionComment?.textContent).toContain('Simplified it.');
+  });
+  expect(sessionComment?.textContent).toContain('Claude');
+});
+
 test('marks comments in the pending review', async () => {
   const file = createChangedFile('src/comment.ts');
   await using view = await renderReact(

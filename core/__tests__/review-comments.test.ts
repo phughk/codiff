@@ -1,8 +1,8 @@
 import { expect, test } from 'vite-plus/test';
 import type { ReviewComment } from '../lib/app-types.ts';
 import {
-  buildReviewCommentsExport,
   buildReviewCommentsMarkdown,
+  buildSessionCommentsExport,
   findReusableReviewCommentDraft,
   getPendingPullRequestReviewComments,
   getRefreshedReviewComments,
@@ -152,22 +152,44 @@ test('agent conversations stay out of the review and copied comments', () => {
   expect(markdown).not.toContain('Why this cache?');
 });
 
-test('buildReviewCommentsExport returns ordered drafts with their location', () => {
+test('session comments stay out of the review and copied comments', () => {
   const comments = [
-    createReviewComment({ body: '  Second.  ', id: 'second', lineNumber: 9 }),
+    createReviewComment({ body: 'Rename this.', id: 'note' }),
+    createReviewComment({ body: 'Claude, check this.', id: 'session', session: {} }),
+  ];
+
+  expect(getPendingPullRequestReviewComments(comments).map((comment) => comment.id)).toEqual([
+    'note',
+  ]);
+  const markdown = buildReviewCommentsMarkdown([], comments, false);
+  expect(markdown).toContain('Rename this.');
+  expect(markdown).not.toContain('Claude, check this.');
+});
+
+test('buildSessionCommentsExport returns ordered session comments with replies', () => {
+  const reply = { agentId: 'claude' as const, body: 'Done.', createdAt: 1 };
+  const comments = [
+    createReviewComment({ body: '  Second.  ', id: 'second', lineNumber: 9, session: {} }),
     createReviewComment({
       body: 'First.',
       id: 'first',
       lineNumber: 4,
+      session: { replies: [reply] },
       startLineNumber: 2,
       startSide: 'additions',
     }),
-    createReviewComment({ anchor: 'file', body: 'Whole file.', id: 'file', lineNumber: undefined }),
-    createReviewComment({ body: 'Remote.', id: 'remote', isReadOnly: true }),
-    createReviewComment({ body: 'Why this cache?', codexReply: { status: 'loading' }, id: 'ask' }),
+    createReviewComment({
+      anchor: 'file',
+      body: 'Whole file.',
+      id: 'file',
+      lineNumber: undefined,
+      session: {},
+    }),
+    createReviewComment({ body: 'Review note.', id: 'review' }),
+    createReviewComment({ body: '   ', id: 'empty', session: {} }),
   ];
 
-  expect(buildReviewCommentsExport([], comments, false)).toEqual([
+  expect(buildSessionCommentsExport([], comments, false)).toEqual([
     {
       anchor: 'file',
       body: 'Whole file.',
@@ -175,6 +197,7 @@ test('buildReviewCommentsExport returns ordered drafts with their location', () 
       filePath: 'src/a.ts',
       id: 'file',
       location: 'File',
+      replies: [],
     },
     {
       anchor: 'line',
@@ -184,6 +207,7 @@ test('buildReviewCommentsExport returns ordered drafts with their location', () 
       id: 'first',
       lineNumber: 4,
       location: 'New lines 2-4',
+      replies: [reply],
       side: 'additions',
       startLineNumber: 2,
       startSide: 'additions',
@@ -196,6 +220,7 @@ test('buildReviewCommentsExport returns ordered drafts with their location', () 
       id: 'second',
       lineNumber: 9,
       location: 'New line 9',
+      replies: [],
       side: 'additions',
     },
   ]);

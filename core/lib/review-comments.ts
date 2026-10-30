@@ -6,7 +6,7 @@ import type {
   PullRequestReviewComment,
   RepositoryState,
 } from '../types.ts';
-import type { CodeViewInstance, ReviewComment } from './app-types.ts';
+import type { CodeViewInstance, ReviewComment, SessionCommentReply } from './app-types.ts';
 import { parseSectionDiffWithOptions } from './diff.ts';
 
 export const isInteractiveReviewEvent = (event: PointerEvent) =>
@@ -218,12 +218,19 @@ export const mergeReviewComments = (
 export const isAgentConversationComment = (comment: Pick<ReviewComment, 'codexReply'>) =>
   comment.codexReply != null;
 
+export const isSessionComment = (comment: Pick<ReviewComment, 'session'>) =>
+  comment.session != null;
+
 export const isReviewDraftComment = (comment: ReviewComment) =>
-  !comment.isReadOnly && !isAgentConversationComment(comment) && comment.body.trim().length > 0;
+  !comment.isReadOnly &&
+  !isAgentConversationComment(comment) &&
+  !isSessionComment(comment) &&
+  comment.body.trim().length > 0;
 
 const isPendingPullRequestReviewComment = (comment: ReviewComment) =>
   !comment.isReadOnly &&
   !isAgentConversationComment(comment) &&
+  !isSessionComment(comment) &&
   !comment.threadId &&
   comment.remoteSubmit?.status !== 'submitting' &&
   comment.body.trim().length > 0;
@@ -434,14 +441,13 @@ const getReviewCommentPatchContext = (
   return section.summary?.reason || section.patch.trim() || 'No patch context available.';
 };
 
-const getOrderedReviewDraftComments = (
+const getOrderedCommentsWithContext = (
   files: ReadonlyArray<ChangedFile>,
   comments: ReadonlyArray<ReviewComment>,
   showWhitespace: boolean,
 ) => {
   const filesByPath = new Map(files.map((file) => [file.path, file]));
-  return comments
-    .filter(isReviewDraftComment)
+  return [...comments]
     .sort((left, right) => {
       const leftFileIndex = files.findIndex((file) => file.path === left.filePath);
       const rightFileIndex = files.findIndex((file) => file.path === right.filePath);
@@ -470,7 +476,11 @@ export const buildReviewCommentsMarkdown = (
   showWhitespace: boolean,
   prefix?: string,
 ) => {
-  const markdown = getOrderedReviewDraftComments(files, comments, showWhitespace)
+  const markdown = getOrderedCommentsWithContext(
+    files,
+    comments.filter(isReviewDraftComment),
+    showWhitespace,
+  )
     .map(({ comment, context }, index) => {
       const fence = getMarkdownFence(context);
 
@@ -489,7 +499,7 @@ export const buildReviewCommentsMarkdown = (
   return markdown ? `${resolvedPrefix}${markdown}` : '';
 };
 
-export type PendingReviewCommentExport = {
+export type SessionCommentExport = {
   anchor: 'file' | 'line';
   body: string;
   diff: string;
@@ -497,38 +507,45 @@ export type PendingReviewCommentExport = {
   id: string;
   lineNumber?: number;
   location: string;
+  replies: ReadonlyArray<SessionCommentReply>;
   side?: 'additions' | 'deletions';
   startLineNumber?: number;
   startSide?: 'additions' | 'deletions';
 };
 
-/** Draft comments as JSON for `codiff-sessions`, in the same order as the Markdown export. */
-export const buildReviewCommentsExport = (
+const isOpenSessionComment = (comment: ReviewComment) =>
+  !comment.isReadOnly && isSessionComment(comment) && comment.body.trim().length > 0;
+
+/** Session comments as JSON for `codiff sessions`, ordered by file and line. */
+export const buildSessionCommentsExport = (
   files: ReadonlyArray<ChangedFile>,
   comments: ReadonlyArray<ReviewComment>,
   showWhitespace: boolean,
-): ReadonlyArray<PendingReviewCommentExport> =>
-  getOrderedReviewDraftComments(files, comments, showWhitespace).map(({ comment, context }) => {
-    const isFileComment = isFileReviewComment(comment);
-    const startSide = getReviewCommentStartSide(comment);
-    return {
-      anchor: isFileComment ? 'file' : 'line',
-      body: comment.body.trim(),
-      diff: context,
-      filePath: comment.filePath,
-      id: comment.id,
-      location: getReviewCommentLineLabel(comment),
-      ...(isFileComment
-        ? {}
-        : {
-            lineNumber: comment.lineNumber,
-            side: comment.side,
-            ...(comment.startLineNumber != null && startSide
-              ? { startLineNumber: comment.startLineNumber, startSide }
-              : {}),
-          }),
-    };
-  });
+): ReadonlyArray<SessionCommentExport> =>
+  getOrderedCommentsWithContext(files, comments.filter(isOpenSessionComment), showWhitespace).map(
+    ({ comment, context }) => {
+      const isFileComment = isFileReviewComment(comment);
+      const startSide = getReviewCommentStartSide(comment);
+      return {
+        anchor: isFileComment ? 'file' : 'line',
+        body: comment.body.trim(),
+        diff: context,
+        filePath: comment.filePath,
+        id: comment.id,
+        location: getReviewCommentLineLabel(comment),
+        ...(isFileComment
+          ? {}
+          : {
+              lineNumber: comment.lineNumber,
+              side: comment.side,
+              ...(comment.startLineNumber != null && startSide
+                ? { startLineNumber: comment.startLineNumber, startSide }
+                : {}),
+            }),
+        replies: comment.session?.replies ?? [],
+      };
+    },
+  );
 
 export const getReviewCommentsFromState = (state: RepositoryState): ReadonlyArray<ReviewComment> =>
   (state.reviewComments ?? []).flatMap((comment) => {

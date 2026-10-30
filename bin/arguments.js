@@ -123,7 +123,7 @@ const usageExamples = [
   { command: 'codiff update', description: 'Update Codiff to the latest release.' },
   {
     command: 'codiff sessions',
-    description: 'Print draft review comments from open windows as JSON.',
+    description: 'Print session comments from open windows as JSON.',
   },
   { command: 'codiff --plan plan.md', description: 'Edit a plan and wait for handoff.' },
   { command: 'codiff --plan plan.md --share', description: 'Share a Markdown plan.' },

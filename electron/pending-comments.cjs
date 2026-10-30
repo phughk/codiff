@@ -6,7 +6,7 @@ const DEFAULT_COPY_PENDING_COMMENTS_TIMEOUT_MS = 2000;
  * @typedef {{
  *   id: number;
  *   isDestroyed: () => boolean;
- *   send: (channel: string, requestId: number) => void;
+ *   send: (channel: string, requestId: number, payload?: unknown) => void;
  * }} PendingCommentsWebContents
  */
 /**
@@ -63,9 +63,10 @@ const createPendingCommentsClipboardController = ({
   /**
    * @param {PendingCommentsBrowserWindow} browserWindow
    * @param {string} channel
+   * @param {unknown} [payload]
    * @returns {Promise<unknown>}
    */
-  const request = (browserWindow, channel) =>
+  const request = (browserWindow, channel, payload) =>
     new Promise((resolve) => {
       if (browserWindow.isDestroyed() || browserWindow.webContents.isDestroyed()) {
         resolve(null);
@@ -88,7 +89,11 @@ const createPendingCommentsClipboardController = ({
         webContentsId,
       });
 
-      browserWindow.webContents.send(channel, requestId);
+      if (payload === undefined) {
+        browserWindow.webContents.send(channel, requestId);
+      } else {
+        browserWindow.webContents.send(channel, requestId, payload);
+      }
     });
 
   /**
@@ -106,12 +111,21 @@ const createPendingCommentsClipboardController = ({
   };
 
   /**
-   * Structured draft comments for `codiff-sessions`. Resolves `null` when the window
-   * does not answer in time.
+   * Session comments for `codiff sessions`. Resolves `null` when the window does not answer
+   * in time.
    * @param {PendingCommentsBrowserWindow} browserWindow
    */
-  const requestPendingComments = (browserWindow) =>
-    request(browserWindow, 'codiff:pendingCommentsRequest');
+  const requestSessionComments = (browserWindow) =>
+    request(browserWindow, 'codiff:sessionCommentsRequest');
+
+  /**
+   * Adds an agent reply to one session comment. Resolves `null` when the window does not
+   * answer in time.
+   * @param {PendingCommentsBrowserWindow} browserWindow
+   * @param {{agentId?: string; body: string; commentId: string}} reply
+   */
+  const requestSessionCommentReply = (browserWindow, reply) =>
+    request(browserWindow, 'codiff:sessionCommentReplyRequest', reply);
 
   /** @param {ReadonlyArray<PendingCommentsBrowserWindow>} browserWindows */
   const copyPendingCommentsToClipboard = async (browserWindows) => {
@@ -127,9 +141,10 @@ const createPendingCommentsClipboardController = ({
   return {
     copyPendingCommentsToClipboard,
     handleCopyPendingCommentsResult,
-    handlePendingCommentsResult: handleResult,
-    requestPendingComments,
+    handleRendererRequestResult: handleResult,
     requestPendingCommentsMarkdown,
+    requestSessionCommentReply,
+    requestSessionComments,
   };
 };
 

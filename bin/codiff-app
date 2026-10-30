@@ -192,7 +192,7 @@ show_help() {
   printf '%s\n' "${blue_bold}Usage:${reset} ${gray}codiff [options] [<ref> | <pr> | <url>] [path]${reset}"
   printf '\n'
   printf '%s\n' "${blue_bold}Commands:${reset}"
-  printf '  %-38s%s%s%s\n' "sessions [path]" "$gray" "Print open windows' draft review comments as JSON." "$reset"
+  printf '  %-38s%s%s%s\n' "sessions [path]" "$gray" "List or reply to session comments in open windows." "$reset"
   printf '  %-38s%s%s%s\n' "update" "$gray" "Update Codiff to the latest release." "$reset"
   printf '\n'
   printf '%s\n' "${blue_bold}Options:${reset}"
@@ -250,7 +250,7 @@ if [ "$#" -eq 1 ] && [ "$1" = "update" ]; then
   ELECTRON_RUN_AS_NODE=1 exec "$runtime" "$script_dir/codiff.js" update
 fi
 
-# `codiff sessions` prints the draft comments of every open window as JSON.
+# `codiff sessions` lists and answers the session comments of every open window.
 if [ "$#" -ge 1 ] && [ "$1" = "sessions" ]; then
   resolve_runtime sessions
   ELECTRON_RUN_AS_NODE=1 exec "$runtime" "$script_dir/codiff.js" "$@"

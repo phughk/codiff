@@ -9,6 +9,7 @@ import { ColumnsIcon as Columns } from '@phosphor-icons/react/Columns';
 import { ImageBrokenIcon as ImageBroken } from '@phosphor-icons/react/ImageBroken';
 import { PencilSimpleIcon as PencilSimple } from '@phosphor-icons/react/PencilSimple';
 import { SquareSplitVerticalIcon as SquareSplitVertical } from '@phosphor-icons/react/SquareSplitVertical';
+import { TerminalWindowIcon as TerminalWindow } from '@phosphor-icons/react/TerminalWindow';
 import { WarningOctagonIcon as WarningOctagon } from '@phosphor-icons/react/WarningOctagon';
 import { XIcon as X } from '@phosphor-icons/react/X';
 import {
@@ -62,6 +63,7 @@ import type {
   ReviewIdentity,
   ReviewScrollBehavior,
   ReviewScrollTarget,
+  SessionCommentReply,
   WalkthroughNote,
 } from '../../lib/app-types.ts';
 import {
@@ -109,6 +111,7 @@ import {
   isFileReviewComment,
   isInteractiveReviewEvent,
   isLineReviewComment,
+  isSessionComment,
   shouldDiscardReviewCommentOnEscape,
   updateStickyHeaderState,
 } from '../../lib/review-comments.ts';
@@ -1405,6 +1408,7 @@ function ReviewCommentEditor({
   onSaveCommentEdit,
   onSubmitComment,
   onSubmitPendingComment,
+  onToggleSessionComment,
   onUpdateComment,
   supportsReviewCommentActions,
 }: {
@@ -1425,6 +1429,7 @@ function ReviewCommentEditor({
   onSaveCommentEdit: (commentId: string, body: string) => Promise<void> | void;
   onSubmitComment: (commentId: string) => void;
   onSubmitPendingComment?: (commentId: string) => void;
+  onToggleSessionComment?: (commentId: string) => void;
   onUpdateComment: (commentId: string, body: string) => void;
   supportsReviewCommentActions: boolean;
 }) {
@@ -1481,11 +1486,14 @@ function ReviewCommentEditor({
     editEditorReadyState.commentId === comment.id && editEditorReadyState.ready;
 
   const draftComment = withCommentBody(comment, draft);
-  const canAskCodex = onAskCodex != null && canAskCodexForComment(draftComment);
+  const isSession = isSessionComment(comment);
+  const canAskCodex = onAskCodex != null && !isSession && canAskCodexForComment(draftComment);
   const commentCanSubmit = canSubmitComment(draftComment);
   const isAgentConversation = isAgentConversationComment(comment);
   const showSubmitActions =
-    supportsReviewCommentActions && !comment.isReadOnly && !isAgentConversation;
+    supportsReviewCommentActions && !comment.isReadOnly && !isAgentConversation && !isSession;
+  const canToggleSession =
+    onToggleSessionComment != null && !comment.isReadOnly && !isAgentConversation;
   const canEditExistingComment =
     supportsReviewCommentActions && comment.isReadOnly && comment.canEdit === true;
   const canSaveEdit =
@@ -1563,6 +1571,11 @@ function ReviewCommentEditor({
       onAskCodex(comment.id);
     }
   }, [comment.id, flushDraft, onAskCodex]);
+
+  const handleToggleSession = useCallback(() => {
+    flushDraft();
+    onToggleSessionComment?.(comment.id);
+  }, [comment.id, flushDraft, onToggleSessionComment]);
 
   const handleSubmitComment = useCallback(() => {
     const flushed = flushDraft();
@@ -1689,7 +1702,7 @@ function ReviewCommentEditor({
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (matchesShortcut(event, keymap, 'submitComment')) {
-        if (supportsReviewCommentActions && !isAgentConversation) {
+        if (supportsReviewCommentActions && !isAgentConversation && !isSession) {
           if (commentCanSubmit) {
             event.preventDefault();
             event.stopPropagation();
@@ -1738,6 +1751,7 @@ function ReviewCommentEditor({
       handleAskCodex,
       handleSubmitComment,
       isAgentConversation,
+      isSession,
       keymap,
       onDeleteComment,
       supportsReviewCommentActions,
@@ -1745,7 +1759,13 @@ function ReviewCommentEditor({
   );
   return (
     <div
-      className={isAgentConversation ? 'review-comment-agent-conversation' : 'review-comment-item'}
+      className={
+        isAgentConversation
+          ? 'review-comment-agent-conversation'
+          : isSession
+            ? 'review-comment-session'
+            : 'review-comment-item'
+      }
     >
       <div className="review-comment">
         {comment.author ? (
@@ -1832,7 +1852,7 @@ function ReviewCommentEditor({
                 <X aria-hidden className="review-comment-delete-icon" size={14} weight="bold" />
               </button>
             ) : null}
-            {!comment.isReadOnly && onAskCodex ? (
+            {!comment.isReadOnly && !isSession && onAskCodex ? (
               <button
                 className="review-comment-action"
                 disabled={!canAskCodex}
@@ -1852,6 +1872,27 @@ function ReviewCommentEditor({
                   src={agentIconUrl(agentId)}
                 />
                 Ask
+              </button>
+            ) : null}
+            {canToggleSession ? (
+              <button
+                aria-pressed={isSession}
+                className="review-comment-action session-toggle"
+                onClick={handleToggleSession}
+                title={
+                  isSession
+                    ? 'Move this note back into your review'
+                    : 'Leave this note for your agent session instead of your review. Agents read it with `codiff sessions` and can reply.'
+                }
+                type="button"
+              >
+                <TerminalWindow
+                  aria-hidden
+                  className="review-comment-action-icon"
+                  size={14}
+                  weight="bold"
+                />
+                Session
               </button>
             ) : null}
             {!comment.isReadOnly && onOpenInEditor ? (
@@ -2000,7 +2041,13 @@ function ReviewCommentEditor({
                 onChange={handleChange}
                 onFocus={handleFocus}
                 onKeyDown={handleKeyDown}
-                placeholder={isAgentConversation ? `Ask ${agentLabel}…` : 'Write a review comment…'}
+                placeholder={
+                  isAgentConversation
+                    ? `Ask ${agentLabel}…`
+                    : isSession
+                      ? 'Write a note for your agent session…'
+                      : 'Write a review comment…'
+                }
                 ref={comment.id === focusCommentId ? focusEditorRef : undefined}
                 spellCheck
                 value={draft}
@@ -2016,6 +2063,9 @@ function ReviewCommentEditor({
       {comment.codexReply ? (
         <AgentReply agentId={agentId} agentLabel={agentLabel} reply={comment.codexReply} />
       ) : null}
+      {comment.session?.replies?.map((reply, index) => (
+        <SessionReply key={index} reply={reply} />
+      ))}
       {comment.codexFollowUps?.map((turn, index) => (
         <Fragment key={index}>
           <div className="review-comment codex-follow-up">
@@ -2121,6 +2171,35 @@ function AgentReply({
   );
 }
 
+function SessionReply({ reply }: { reply: SessionCommentReply }) {
+  const label = reply.agentId ? getAgentLabel(reply.agentId) : 'Agent session';
+  return (
+    <div className="review-comment codex">
+      {reply.agentId ? (
+        <AgentAvatar agentId={reply.agentId} />
+      ) : (
+        <span aria-hidden className="review-comment-session-avatar">
+          <TerminalWindow size={18} weight="bold" />
+        </span>
+      )}
+      <div className="review-comment-body codex">
+        <div className="review-comment-header codex">
+          <strong>{label}</strong>
+        </div>
+        <div className="review-comment-codex-reply">
+          <ReadOnlyMarkdown
+            ariaLabel={`${label} reply`}
+            className="review-comment-codex-reply-markdown"
+            density="compact"
+            value={reply.body}
+            variant="embedded"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Continues the conversation with the agent under its reply. */
 function AgentFollowUpInput({
   agentLabel,
@@ -2187,6 +2266,7 @@ function ReviewCommentThreadGroup({
   onSaveCommentEdit,
   onSubmitComment,
   onSubmitPendingComment,
+  onToggleSessionComment,
   onUpdateComment,
   supportsReviewCommentActions,
 }: {
@@ -2209,6 +2289,7 @@ function ReviewCommentThreadGroup({
   onSaveCommentEdit: (commentId: string, body: string) => Promise<void> | void;
   onSubmitComment: (commentId: string) => void;
   onSubmitPendingComment?: (commentId: string) => void;
+  onToggleSessionComment?: (commentId: string) => void;
   onUpdateComment: (commentId: string, body: string) => void;
   supportsReviewCommentActions: boolean;
 }) {
@@ -2299,6 +2380,7 @@ function ReviewCommentThreadGroup({
             onSaveCommentEdit={onSaveCommentEdit}
             onSubmitComment={onSubmitComment}
             onSubmitPendingComment={onSubmitPendingComment}
+            onToggleSessionComment={onToggleSessionComment}
             onUpdateComment={onUpdateComment}
             supportsReviewCommentActions={supportsReviewCommentActions}
           />
@@ -2367,6 +2449,7 @@ function ReviewAnnotation({
   onSaveCommentEdit,
   onSubmitComment,
   onSubmitPendingComment,
+  onToggleSessionComment,
   onUpdateComment,
   supportsReviewCommentActions,
 }: {
@@ -2390,6 +2473,7 @@ function ReviewAnnotation({
   onSaveCommentEdit: (commentId: string, body: string) => Promise<void> | void;
   onSubmitComment: (commentId: string) => void;
   onSubmitPendingComment?: (commentId: string) => void;
+  onToggleSessionComment?: (commentId: string) => void;
   onUpdateComment: (commentId: string, body: string) => void;
   supportsReviewCommentActions: boolean;
 }) {
@@ -2458,6 +2542,7 @@ function ReviewAnnotation({
           onSaveCommentEdit={onSaveCommentEdit}
           onSubmitComment={onSubmitComment}
           onSubmitPendingComment={onSubmitPendingComment}
+          onToggleSessionComment={onToggleSessionComment}
           onUpdateComment={onUpdateComment}
           supportsReviewCommentActions={supportsReviewCommentActions}
         />
@@ -2847,6 +2932,7 @@ export function ReviewCodeView({
   onSubmitComment,
   onSubmitPendingComment,
   onToggleCollapsed,
+  onToggleSessionComment,
   onToggleViewed,
   onUpdateComment,
   onUpdateSourceDescription,
@@ -2916,6 +3002,7 @@ export function ReviewCodeView({
   onSubmitComment: (commentId: string) => void;
   onSubmitPendingComment?: (commentId: string) => void;
   onToggleCollapsed: (file: ChangedFile, isCollapsed: boolean, reviewKey: string) => void;
+  onToggleSessionComment?: (commentId: string) => void;
   onToggleViewed: (file: ChangedFile, isViewed: boolean, reviewIdentity: ReviewIdentity) => void;
   onUpdateComment: (commentId: string, body: string) => void;
   onUpdateSourceDescription?: (body: string) => Promise<void> | void;
@@ -5209,6 +5296,7 @@ export function ReviewCodeView({
           onSaveCommentEdit={onSaveCommentEdit}
           onSubmitComment={onSubmitComment}
           onSubmitPendingComment={onSubmitPendingComment}
+          onToggleSessionComment={onToggleSessionComment}
           onUpdateComment={onUpdateComment}
           supportsReviewCommentActions={supportsReviewCommentActions}
         />
@@ -5237,6 +5325,7 @@ export function ReviewCodeView({
       onSaveCommentEdit,
       onSubmitComment,
       onSubmitPendingComment,
+      onToggleSessionComment,
       onUpdateComment,
       renderComments,
       replyToThread,

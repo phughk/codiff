@@ -6,12 +6,13 @@ type FakeBrowserWindow = {
   webContents: {
     id: number;
     isDestroyed: () => boolean;
-    send: (channel: string, requestId: number) => void;
+    send: (channel: string, requestId: number, payload?: unknown) => void;
   };
 };
 
 type SentMessage = {
   channel: string;
+  payload?: unknown;
   requestId: number;
 };
 
@@ -31,12 +32,16 @@ const { createPendingCommentsClipboardController } = require('../pending-comment
       requestId: number,
       markdown: unknown,
     ) => void;
-    handlePendingCommentsResult: (
+    handleRendererRequestResult: (
       event: { sender: { id: number } },
       requestId: number,
-      comments: unknown,
+      result: unknown,
     ) => void;
-    requestPendingComments: (browserWindow: FakeBrowserWindow) => Promise<unknown>;
+    requestSessionCommentReply: (
+      browserWindow: FakeBrowserWindow,
+      reply: { agentId?: string; body: string; commentId: string },
+    ) => Promise<unknown>;
+    requestSessionComments: (browserWindow: FakeBrowserWindow) => Promise<unknown>;
     requestPendingCommentsMarkdown: (browserWindow: FakeBrowserWindow) => Promise<string>;
   };
 };
@@ -48,8 +53,10 @@ const createFakeWindow = (id: number) => {
     webContents: {
       id,
       isDestroyed: () => false,
-      send: (channel, requestId) => {
-        sentMessages.push({ channel, requestId });
+      send: (channel, requestId, payload) => {
+        sentMessages.push(
+          payload === undefined ? { channel, requestId } : { channel, payload, requestId },
+        );
       },
     },
   };
@@ -136,29 +143,46 @@ test('ignores pending comment responses from the wrong window', async () => {
   await expect(markdownPromise).resolves.toBe('Right window.');
 });
 
-test('requests structured pending comments for codiff-sessions', async () => {
+test('requests session comments for codiff sessions', async () => {
   const controller = createPendingCommentsClipboardController({
     clipboard: { writeText: () => {} },
   });
   const window = createFakeWindow(4);
   const comments = [{ body: 'Rename this.', id: 'a' }];
 
-  const request = controller.requestPendingComments(window.browserWindow);
+  const request = controller.requestSessionComments(window.browserWindow);
 
-  expect(window.sentMessages).toEqual([{ channel: 'codiff:pendingCommentsRequest', requestId: 1 }]);
-  controller.handlePendingCommentsResult({ sender: { id: 5 } }, 1, []);
-  controller.handlePendingCommentsResult({ sender: { id: 4 } }, 1, comments);
+  expect(window.sentMessages).toEqual([{ channel: 'codiff:sessionCommentsRequest', requestId: 1 }]);
+  controller.handleRendererRequestResult({ sender: { id: 5 } }, 1, []);
+  controller.handleRendererRequestResult({ sender: { id: 4 } }, 1, comments);
 
   await expect(request).resolves.toBe(comments);
 });
 
-test('resolves null when a window does not return pending comments', async () => {
+test('sends a session comment reply to the window', async () => {
+  const controller = createPendingCommentsClipboardController({
+    clipboard: { writeText: () => {} },
+  });
+  const window = createFakeWindow(2);
+  const reply = { agentId: 'claude', body: 'Fixed.', commentId: 'a' };
+
+  const request = controller.requestSessionCommentReply(window.browserWindow, reply);
+
+  expect(window.sentMessages).toEqual([
+    { channel: 'codiff:sessionCommentReplyRequest', payload: reply, requestId: 1 },
+  ]);
+  controller.handleRendererRequestResult({ sender: { id: 2 } }, 1, { status: 'ok' });
+
+  await expect(request).resolves.toEqual({ status: 'ok' });
+});
+
+test('resolves null when a window does not return session comments', async () => {
   const controller = createPendingCommentsClipboardController({
     clipboard: { writeText: () => {} },
     timeoutMs: 1,
   });
 
-  await expect(controller.requestPendingComments(createFakeWindow(1).browserWindow)).resolves.toBe(
+  await expect(controller.requestSessionComments(createFakeWindow(1).browserWindow)).resolves.toBe(
     null,
   );
 });

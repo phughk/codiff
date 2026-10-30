@@ -6,30 +6,65 @@ const { homedir, userInfo } = require('node:os');
 const { dirname, join } = require('node:path');
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
-const MAX_REQUEST_BYTES = 64 * 1024;
+const MAX_REQUEST_BYTES = 1024 * 1024;
 
 /**
- * @typedef {{type: 'list'}} CodiffSessionsRequest
+ * @typedef {{type: 'list'}} CodiffSessionsListRequest
+ * @typedef {{
+ *   agentId?: string;
+ *   body: string;
+ *   commentId: string;
+ *   sessionId: number;
+ *   type: 'reply';
+ * }} CodiffSessionsReplyRequest
+ * @typedef {CodiffSessionsListRequest | CodiffSessionsReplyRequest} CodiffSessionsRequest
  * @typedef {{sessions: ReadonlyArray<unknown>}} CodiffSessionsResponse
  */
 
 /**
- * The running app listens here so `codiff-sessions` can read draft comments from
- * every open window. Lives next to `~/.codiff/codiff.jsonc` so agent sandboxes that
- * rewrite `TMPDIR` still find it.
+ * The running app listens here so `codiff sessions` can read and answer session comments in
+ * every open window. Lives next to `~/.codiff/codiff.jsonc` so agent sandboxes that rewrite
+ * `TMPDIR` still find it.
  */
 const getSessionsSocketPath = () =>
   process.platform === 'win32'
     ? `\\\\.\\pipe\\codiff-sessions-${userInfo().username}`
     : join(homedir(), '.codiff', 'sessions.sock');
 
+/** @param {unknown} value @returns {CodiffSessionsRequest | null} */
+const parseSessionsRequest = (value) => {
+  const request = /** @type {Record<string, unknown> | null} */ (
+    value && typeof value === 'object' ? value : null
+  );
+  if (request?.type === 'list') {
+    return { type: 'list' };
+  }
+  if (
+    request?.type === 'reply' &&
+    typeof request.sessionId === 'number' &&
+    typeof request.commentId === 'string' &&
+    typeof request.body === 'string' &&
+    request.body.trim() &&
+    (request.agentId == null || typeof request.agentId === 'string')
+  ) {
+    return {
+      ...(typeof request.agentId === 'string' ? { agentId: request.agentId } : {}),
+      body: request.body,
+      commentId: request.commentId,
+      sessionId: request.sessionId,
+      type: 'reply',
+    };
+  }
+  return null;
+};
+
 /**
  * @param {{
- *   listSessions: () => Promise<ReadonlyArray<unknown>>;
+ *   handleRequest: (request: CodiffSessionsRequest) => Promise<object>;
  *   socketPath?: string;
  * }} options
  */
-const startSessionsServer = ({ listSessions, socketPath = getSessionsSocketPath() }) => {
+const startSessionsServer = ({ handleRequest, socketPath = getSessionsSocketPath() }) => {
   const isPipe = socketPath.startsWith('\\\\.\\pipe\\');
   if (!isPipe) {
     mkdirSync(dirname(socketPath), { recursive: true });
@@ -53,19 +88,19 @@ const startSessionsServer = ({ listSessions, socketPath = getSessionsSocketPath(
       }
 
       socket.removeAllListeners('data');
-      /** @type {Partial<CodiffSessionsRequest> | null} */
+      /** @type {CodiffSessionsRequest | null} */
       let request = null;
       try {
-        request = JSON.parse(buffer.slice(0, newline));
+        request = parseSessionsRequest(JSON.parse(buffer.slice(0, newline)));
       } catch {}
 
-      if (request?.type !== 'list') {
+      if (!request) {
         socket.end(`${JSON.stringify({ error: 'Unsupported request.' })}\n`);
         return;
       }
 
-      listSessions().then(
-        (sessions) => socket.end(`${JSON.stringify({ sessions })}\n`),
+      handleRequest(request).then(
+        (response) => socket.end(`${JSON.stringify(response)}\n`),
         (error) =>
           socket.end(
             `${JSON.stringify({ error: error instanceof Error ? error.message : String(error) })}\n`,
@@ -88,14 +123,15 @@ const startSessionsServer = ({ listSessions, socketPath = getSessionsSocketPath(
 };
 
 /**
- * Resolves `null` when no Codiff app is listening.
+ * Resolves `null` when no Codiff app is listening and rejects when the app reports an error.
+ * @param {CodiffSessionsRequest} request
  * @param {{socketPath?: string; timeoutMs?: number}} [options]
- * @returns {Promise<CodiffSessionsResponse | null>}
+ * @returns {Promise<Record<string, unknown> | null>}
  */
-const requestSessions = ({
-  socketPath = getSessionsSocketPath(),
-  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
-} = {}) =>
+const sendSessionsRequest = (
+  request,
+  { socketPath = getSessionsSocketPath(), timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS } = {},
+) =>
   new Promise((resolve, reject) => {
     const socket = createConnection(socketPath);
     let buffer = '';
@@ -104,7 +140,7 @@ const requestSessions = ({
       socket.destroy();
       reject(new Error('Codiff did not respond in time.'));
     });
-    socket.on('connect', () => socket.write(`${JSON.stringify({ type: 'list' })}\n`));
+    socket.on('connect', () => socket.write(`${JSON.stringify(request)}\n`));
     socket.on('data', (chunk) => {
       buffer += chunk;
     });
@@ -123,11 +159,33 @@ const requestSessions = ({
           reject(new Error(response.error));
           return;
         }
-        resolve({ sessions: Array.isArray(response?.sessions) ? response.sessions : [] });
+        resolve(response && typeof response === 'object' ? response : {});
       } catch {
         reject(new Error('Codiff returned an invalid response.'));
       }
     });
   });
 
-module.exports = { getSessionsSocketPath, requestSessions, startSessionsServer };
+/**
+ * @param {{socketPath?: string; timeoutMs?: number}} [options]
+ * @returns {Promise<CodiffSessionsResponse | null>}
+ */
+const requestSessions = async (options) => {
+  const response = await sendSessionsRequest({ type: 'list' }, options);
+  return response ? { sessions: Array.isArray(response.sessions) ? response.sessions : [] } : null;
+};
+
+/**
+ * Resolves `false` when no Codiff app is listening.
+ * @param {Omit<CodiffSessionsReplyRequest, 'type'>} reply
+ * @param {{socketPath?: string; timeoutMs?: number}} [options]
+ */
+const replyToSessionComment = async (reply, options) =>
+  (await sendSessionsRequest({ ...reply, type: 'reply' }, options)) != null;
+
+module.exports = {
+  getSessionsSocketPath,
+  replyToSessionComment,
+  requestSessions,
+  startSessionsServer,
+};

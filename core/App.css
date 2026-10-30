@@ -38,6 +38,7 @@
     --sidebar-bg: rgb(255 255 255 / 0.58);
     --sidebar-border: rgb(17 17 17 / 0.1);
     --agent-conversation: #7c5cd6;
+    --session-comment: #0d8a7f;
     --sidebar-ref: #c56e0e;
     --sidebar-text: rgb(17 17 17 / 0.76);
     --sidebar-vibrancy-tint: rgb(255 255 255 / 0.34);
@@ -68,6 +69,7 @@
       --sidebar-bg: rgb(38 38 38 / 0.58);
       --sidebar-border: rgb(230 230 230 / 0.1);
       --agent-conversation: #a58cf0;
+      --session-comment: #3ec9b9;
       --sidebar-ref: #eb9a3d;
       --sidebar-text: rgb(230 230 230 / 0.78);
       --sidebar-vibrancy-tint: rgb(255 255 255 / 0.06);
@@ -98,6 +100,7 @@
     --sidebar-bg: rgb(255 255 255 / 0.58);
     --sidebar-border: rgb(17 17 17 / 0.1);
     --agent-conversation: #7c5cd6;
+    --session-comment: #0d8a7f;
     --sidebar-ref: #c56e0e;
     --sidebar-text: rgb(17 17 17 / 0.76);
     --sidebar-vibrancy-tint: rgb(255 255 255 / 0.34);
@@ -127,6 +130,7 @@
     --sidebar-bg: rgb(38 38 38 / 0.58);
     --sidebar-border: rgb(230 230 230 / 0.1);
     --agent-conversation: #a58cf0;
+    --session-comment: #3ec9b9;
     --sidebar-ref: #eb9a3d;
     --sidebar-text: rgb(230 230 230 / 0.78);
     --sidebar-vibrancy-tint: rgb(255 255 255 / 0.06);
@@ -3856,6 +3860,41 @@ diffs-container .review-comment-thread {
 
 .review-comment-body.codex {
   overflow: hidden;
+}
+
+/* A note left for the agent session that reads `codiff sessions`, with its replies. */
+.review-comment-session {
+  background: color-mix(in srgb, var(--session-comment) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--session-comment) 32%, transparent);
+  border-radius: 28px;
+  corner-shape: squircle;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px;
+}
+
+.review-comment-session .review-comment-body {
+  border-color: color-mix(in srgb, var(--session-comment) 28%, var(--file-border));
+}
+
+.review-comment-action.session-toggle[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--session-comment) 15%, transparent);
+  color: var(--session-comment);
+}
+
+.review-comment-session-avatar {
+  align-items: center;
+  background: color-mix(in srgb, var(--session-comment) 15%, transparent);
+  border-radius: 24px;
+  color: var(--session-comment);
+  corner-shape: squircle;
+  display: inline-flex;
+  flex: none;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
 }
 
 .code-quality-finding {

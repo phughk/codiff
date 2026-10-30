@@ -1,6 +1,6 @@
 import { useCallback, useState, type RefObject } from 'react';
 import type { CodiffAgentBackend } from '../../config/types.ts';
-import type { ReviewComment } from '../../lib/app-types.ts';
+import type { ReviewComment, SessionCommentReply } from '../../lib/app-types.ts';
 import {
   getPendingPullRequestReviewComments,
   getPullRequestReviewSummary,
@@ -510,6 +510,58 @@ export function useAppReviewComments({
     ],
   );
 
+  /** Moves a note between the review and the agent session reading `codiff sessions`. */
+  const toggleSessionComment = useCallback(
+    (commentId: string) => {
+      const comment = reviewCommentsRef.current.find((candidate) => candidate.id === commentId);
+      if (!comment || comment.isReadOnly || isAgentConversationComment(comment)) {
+        return;
+      }
+
+      setReviewComments((current) =>
+        current.map((candidate) => {
+          if (candidate.id !== commentId) {
+            return candidate;
+          }
+          if (candidate.session) {
+            const { session: _session, ...reviewComment } = candidate;
+            return reviewComment;
+          }
+          return { ...candidate, remoteSubmit: undefined, session: {} };
+        }),
+      );
+      onCommentFileChange(comment.filePath);
+    },
+    [onCommentFileChange, reviewCommentsRef],
+  );
+
+  /** Adds a reply from `codiff sessions reply`. Returns false when the session comment is gone. */
+  const addSessionCommentReply = useCallback(
+    (commentId: string, reply: SessionCommentReply) => {
+      const comment = reviewCommentsRef.current.find((candidate) => candidate.id === commentId);
+      if (!comment?.session) {
+        return false;
+      }
+
+      setReviewComments((current) =>
+        current.map((candidate) =>
+          candidate.id === commentId && candidate.session
+            ? {
+                ...candidate,
+                session: {
+                  ...candidate.session,
+                  replies: [...(candidate.session.replies ?? []), reply],
+                },
+              }
+            : candidate,
+        ),
+      );
+      onCommentFileChange(comment.filePath);
+      return true;
+    },
+    [onCommentFileChange, reviewCommentsRef],
+  );
+
   const getReviewSubmitSummary = useCallback(
     () =>
       getPullRequestReviewSummary(
@@ -526,6 +578,7 @@ export function useAppReviewComments({
 
   return {
     ...commentDrafts,
+    addSessionCommentReply,
     askCodex,
     deleteReviewComment,
     getAgentReviewState,
@@ -539,5 +592,6 @@ export function useAppReviewComments({
     submitPendingPullRequestComment,
     submitPullRequestComment,
     submitPullRequestReview,
+    toggleSessionComment,
   };
 }

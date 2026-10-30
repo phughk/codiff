@@ -1073,25 +1073,51 @@ ipcMain.on(
   pendingCommentsClipboardController.handleCopyPendingCommentsResult,
 );
 ipcMain.on(
-  'codiff:pendingCommentsResult',
-  pendingCommentsClipboardController.handlePendingCommentsResult,
+  'codiff:rendererRequestResult',
+  pendingCommentsClipboardController.handleRendererRequestResult,
 );
 
 /** @type {ReturnType<typeof startSessionsServer> | null} */
 let sessionsServer = null;
 
-// Answers `codiff-sessions` with the draft review comments of every open review window.
-const listSessions = async () => {
-  const windows = [...openWindows].filter(
+const getSessionWindows = () =>
+  [...openWindows].filter(
     (window) =>
       !window.isDestroyed() &&
       !window.webContents.isDestroyed() &&
       !windowLaunchOptions.get(window.webContents.id)?.planFile,
   );
+
+/**
+ * Answers `codiff sessions`: lists every review window's session comments, or adds an agent
+ * reply to one of them.
+ * @param {import('./codiff-sessions.cjs').CodiffSessionsRequest} request
+ */
+const handleSessionsRequest = async (request) => {
+  if (request.type === 'reply') {
+    const window = getSessionWindows().find(
+      (candidate) => candidate.webContents.id === request.sessionId,
+    );
+    if (!window) {
+      throw new Error(`No open Codiff session with id ${request.sessionId}.`);
+    }
+    const result = /** @type {{reason?: string; status?: string} | null} */ (
+      await pendingCommentsClipboardController.requestSessionCommentReply(window, {
+        ...(request.agentId ? { agentId: request.agentId } : {}),
+        body: request.body,
+        commentId: request.commentId,
+      })
+    );
+    if (result?.status !== 'ok') {
+      throw new Error(result?.reason ?? 'The Codiff window did not respond.');
+    }
+    return { status: 'ok' };
+  }
+
   const sessions = await Promise.all(
-    windows.map(async (window) => {
+    getSessionWindows().map(async (window) => {
       const webContentsId = window.webContents.id;
-      const comments = await pendingCommentsClipboardController.requestPendingComments(window);
+      const comments = await pendingCommentsClipboardController.requestSessionComments(window);
       return {
         comments: Array.isArray(comments) ? comments : [],
         id: webContentsId,
@@ -1102,7 +1128,7 @@ const listSessions = async () => {
       };
     }),
   );
-  return sessions;
+  return { sessions };
 };
 
 /**
@@ -1577,7 +1603,7 @@ if (squirrelStartup || !lock) {
   app.on('ready', () => {
     migrateFromPreferences(app.getPath('userData'), normalizeOpenAIModel);
     try {
-      sessionsServer = startSessionsServer({ listSessions });
+      sessionsServer = startSessionsServer({ handleRequest: handleSessionsRequest });
     } catch {
       // `codiff-sessions` is optional; the app works without its socket.
     }

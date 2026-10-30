@@ -95,8 +95,8 @@ import {
 } from './lib/reload-selection.ts';
 import { resolveReviewCommandTarget } from './lib/review-command-target.ts';
 import {
-  buildReviewCommentsExport,
   buildReviewCommentsMarkdown,
+  buildSessionCommentsExport,
   getRefreshedReviewComments,
   getReviewCommentsFromState,
   getVisibleReviewComments,
@@ -311,6 +311,7 @@ export default function App({
     [toggleReviewViewed],
   );
   const {
+    addSessionCommentReply,
     askCodex,
     createComment,
     deleteReviewComment,
@@ -329,6 +330,7 @@ export default function App({
     submitPendingPullRequestComment,
     submitPullRequestComment,
     submitPullRequestReview,
+    toggleSessionComment,
     updateActiveReviewCommentDraft,
     updateComment,
   } = useAppReviewComments({
@@ -1307,10 +1309,10 @@ export default function App({
 
   useEffect(
     () =>
-      window.codiff.onPendingCommentsRequest(() => {
+      window.codiff.onSessionCommentsRequest(() => {
         const currentState = stateRef.current;
         return currentState
-          ? buildReviewCommentsExport(
+          ? buildSessionCommentsExport(
               currentState.files,
               reviewCommentsRef.current,
               preferencesRef.current.showWhitespace,
@@ -1318,6 +1320,20 @@ export default function App({
           : [];
       }),
     [reviewCommentsRef],
+  );
+
+  useEffect(
+    () =>
+      window.codiff.onSessionCommentReplyRequest(({ agentId, body, commentId }) =>
+        addSessionCommentReply(commentId, {
+          ...(agentId ? { agentId } : {}),
+          body,
+          createdAt: Date.now(),
+        })
+          ? { status: 'ok' }
+          : { reason: `No session comment with id ${commentId} in this window.`, status: 'error' },
+      ),
+    [addSessionCommentReply],
   );
 
   useEffect(() => {
@@ -2014,6 +2030,7 @@ export default function App({
     onSubmitComment: submitPullRequestComment,
     ...(isGitHubPullRequest ? { onSubmitPendingComment: submitPendingPullRequestComment } : {}),
     onToggleCollapsed: toggleCollapsed,
+    onToggleSessionComment: toggleSessionComment,
     onToggleViewed: toggleViewed,
     onUpdateComment: updateComment,
     renderMarkdownAs: preferences.renderMarkdownAs,

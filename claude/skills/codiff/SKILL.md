@@ -24,32 +24,44 @@ change. Codiff owns the format and authoring guidance, so this skill only handle
   walkthrough.
 - Use **plan mode** for `$codiff plan` or when the user explicitly asks to edit or approve a
   plan in Codiff before execution.
-- Use **comments mode** when the user asks to get, address, fix, or resolve the comments they
-  left in Codiff.
+- Use **comments mode** when the user asks to get, address, fix, answer, or resolve the comments
+  they left in Codiff.
 - Use **desktop mode** for plain `$codiff`, `/codiff`, "open Codiff", or "show me Codiff".
 - In share mode, only pass `--open` when the user explicitly asks to open the resulting share in
   a browser. Otherwise return the URL without opening it.
 
 ## Comments Mode
 
-1. Read the outstanding draft comments from every open Codiff window, limited to the current
-   repository:
+Session comments are notes the user leaves in Codiff for you, marked with the **Session** button.
+They stay out of the user's review and copied comments.
+
+1. Read the session comments from every open Codiff window, limited to the current repository:
 
    ```bash
    node scripts/open-codiff.mjs --sessions /path/to/repository
    ```
 
    Omit the path to include every open window. The JSON has `running` (false when Codiff is not
-   open) and `sessions`, one per window. Each session has its `repositoryRoot`, `source` (what the
-   window reviews), and `comments`. Each comment has `filePath`, `location` (for example
-   `New lines 12-14` or `File`), `lineNumber`/`side` (`additions` is the new file, `deletions` the
-   old one), `body`, and `diff`, the hunk excerpt the comment was left on.
+   open) and `sessions`, one per window. Each session has its `id`, `repositoryRoot`, `source`
+   (what the window reviews), and `comments`. Each comment has an `id`, `filePath`, `location`
+   (for example `New lines 12-14` or `File`), `lineNumber`/`side` (`additions` is the new file,
+   `deletions` the old one), `body`, `diff` (the hunk excerpt the comment was left on), and
+   `replies` already posted under it.
 
 2. Treat each comment `body` as user direction for the code at its location. Line numbers on
    `additions` refer to the file as it was when the comment was written; use the `diff` excerpt
-   to find the code if it has moved.
-3. Apply the changes, then summarize which comments were addressed and which were skipped or
-   need clarification. The user removes handled comments in Codiff.
+   to find the code if it has moved. Skip comments whose `replies` already answer them unless
+   the user edited the comment since.
+3. Apply the changes, then answer each handled comment in Codiff with a short Markdown reply that
+   says what you changed, or asks the one question that blocks it:
+
+   ```bash
+   node scripts/open-codiff.mjs --sessions reply <session-id> <comment-id> - <<'EOF'
+   Renamed `loadUser` to `fetchUser` and updated both callers.
+   EOF
+   ```
+
+4. Summarize in the conversation which comments were addressed and which need the user.
 
 ## Plan Mode
 

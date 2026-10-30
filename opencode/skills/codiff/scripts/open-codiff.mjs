@@ -187,10 +187,18 @@ if (rawArgs[0] === '--resolve-plan-comments') {
   process.exit(0);
 }
 
-// `--sessions [path]`: print the draft review comments of every open Codiff window as JSON.
+// `--sessions [path]` prints the session comments of every open Codiff window as JSON;
+// `--sessions reply <session-id> <comment-id> [body]` answers one of them as opencode.
 if (rawArgs[0] === '--sessions') {
   const { runSessionsCommand } = await import(join(codiffRoot, 'bin/sessions-command.js'));
-  process.exit(await runSessionsCommand(rawArgs.slice(1)));
+  const sessionArgs = rawArgs.slice(1);
+  process.exit(
+    await runSessionsCommand(
+      sessionArgs[0] === 'reply' && !sessionArgs.includes('--agent')
+        ? ['reply', '--agent', 'opencode', ...sessionArgs.slice(1)]
+        : sessionArgs,
+    ),
+  );
 }
 
 if (rawArgs.includes('--guide')) {

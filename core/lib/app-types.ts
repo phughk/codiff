@@ -141,12 +141,25 @@ export type ReviewComment = {
     status: 'error' | 'submitting';
   };
   sectionId: string;
+  /**
+   * Set on notes for the agent session that reads them with `codiff sessions`. They stay out of
+   * the review and copied comments, and collect the agent's replies.
+   */
+  session?: {
+    replies?: ReadonlyArray<SessionCommentReply>;
+  };
   side?: 'additions' | 'deletions';
   startLineNumber?: number;
   startSide?: 'additions' | 'deletions';
   submittedAt?: string;
   threadId?: string;
   url?: string;
+};
+
+export type SessionCommentReply = {
+  agentId?: CodiffAgentBackend;
+  body: string;
+  createdAt: number;
 };
 
 export type SidebarMode = 'tree' | 'walkthrough' | 'history';

@@ -1,6 +1,6 @@
 import type { NativeKeyboardLayout } from './config/keyboard-layout.ts';
-import type { CodiffConfig } from './config/types.ts';
-import type { PendingReviewCommentExport } from './lib/review-comments.ts';
+import type { CodiffAgentBackend, CodiffConfig } from './config/types.ts';
+import type { SessionCommentExport } from './lib/review-comments.ts';
 import type {
   AgentReviewRequest,
   AgentReviewResult,
@@ -105,12 +105,17 @@ declare global {
         ) => void,
       ) => () => void;
       onOpenReviewSource: (callback: (kind: OpenReviewSourceKind) => void) => () => void;
-      onPendingCommentsRequest: (
-        callback: () => ReadonlyArray<PendingReviewCommentExport>,
-      ) => () => void;
       onPlanCloseRequested: (callback: () => void) => () => void;
       onRefreshRequest: (callback: () => void) => () => void;
       onRepositoryChanged: (callback: (change: { root: string }) => void) => () => void;
+      onSessionCommentReplyRequest: (
+        callback: (reply: {
+          agentId?: CodiffAgentBackend;
+          body: string;
+          commentId: string;
+        }) => { status: 'ok' } | { reason: string; status: 'error' },
+      ) => () => void;
+      onSessionCommentsRequest: (callback: () => ReadonlyArray<SessionCommentExport>) => () => void;
       onUpdateStatusChanged: (callback: (status: CodiffUpdateStatus) => void) => () => void;
       onWalkthroughCommitOutput: (callback: (chunk: string) => void) => () => void;
       onWalkthroughProgress: (callback: (progress: WalkthroughProgressEvent) => void) => () => void;
