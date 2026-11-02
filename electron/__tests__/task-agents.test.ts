@@ -30,7 +30,8 @@ test('a task without a choice uses the default agent and its model setting', () 
 test('a task with an agent and model uses both', () => {
   const { agent, model, overridesModel } = resolveTaskAgent(settings, 'review', 'codex');
   expect(agent.id).toBe('claude');
-  expect(model).toBe('claude-opus-4-8');
+  // Legacy pinned Claude ids resolve to the CLI alias for that family.
+  expect(model).toBe('opus');
   expect(overridesModel).toBe(true);
 });
 
