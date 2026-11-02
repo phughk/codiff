@@ -1,12 +1,9 @@
 import type { MarkdownEditor as MarkdownEditorComponent } from '@nkzw/mdx-editor';
-import { CheckIcon as Check } from '@phosphor-icons/react/Check';
-import { Copy as LucideCopy } from 'lucide-react';
-import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
-import { Suspense, useCallback, useMemo } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
+import { Suspense, useMemo } from 'react';
 import { renderInlineMarkdown } from '../../lib/markdown.tsx';
+import { CopyCodeButton } from './CopyCodeButton.tsx';
 import { MarkdownEditor } from './LazyMarkdownEditor.tsx';
-import { MermaidDiagram } from './MermaidDiagram.tsx';
-import { useCopiedState } from './useCopiedState.ts';
 
 type MarkdownEditorProps = ComponentProps<typeof MarkdownEditorComponent>;
 
@@ -22,13 +19,7 @@ type MarkdownTextPart = {
   value: string;
 };
 
-type MarkdownMermaidPart = {
-  code: string;
-  source: string;
-  type: 'mermaid';
-};
-
-type MarkdownPart = MarkdownDetailsPart | MarkdownMermaidPart | MarkdownTextPart;
+type MarkdownPart = MarkdownDetailsPart | MarkdownTextPart;
 
 const htmlCommentPattern = /<!--[\s\S]*?-->/g;
 const detailsOpenPattern = /<details\b([^>]*)>/gi;
@@ -200,125 +191,15 @@ const parseMarkdownDetails = (value: string): Array<MarkdownPart> => {
   return parts;
 };
 
-const isMermaidFence = (line: string, marker: string) =>
-  line.trimStart().slice(marker.length).trim().split(/\s/)[0]?.toLowerCase() === 'mermaid';
-
-// Splits ```mermaid fences out of Markdown so they render as diagrams.
-export const splitMermaidBlocks = (value: string): Array<MarkdownPart> => {
-  const parts: Array<MarkdownPart> = [];
-  const lines = value.split('\n');
-  let markdownLines: Array<string> = [];
-  let fence: { lines: Array<string>; marker: string; mermaid: boolean } | null = null;
-
-  const flushMarkdown = () => {
-    if (markdownLines.length > 0) {
-      parts.push({ type: 'markdown', value: markdownLines.join('\n') });
-      markdownLines = [];
-    }
-  };
-
-  for (const line of lines) {
-    if (fence) {
-      if (!fence.mermaid) {
-        markdownLines.push(line);
-        if (isClosingFence(fence.marker, line)) {
-          fence = null;
-        }
-        continue;
-      }
-      fence.lines.push(line);
-      if (isClosingFence(fence.marker, line)) {
-        parts.push({
-          code: fence.lines.slice(1, -1).join('\n'),
-          source: fence.lines.join('\n'),
-          type: 'mermaid',
-        });
-        fence = null;
-      }
-      continue;
-    }
-
-    const marker = getOpeningFenceMarker(line);
-    if (marker && isMermaidFence(line, marker)) {
-      flushMarkdown();
-      fence = { lines: [line], marker, mermaid: true };
-      continue;
-    }
-    if (marker) {
-      fence = { lines: [], marker, mermaid: false };
-    }
-    markdownLines.push(line);
-  }
-
-  // An unterminated diagram fence stays a plain code block.
-  if (fence?.mermaid) {
-    markdownLines.push(...fence.lines);
-  }
-  flushMarkdown();
-  return parts;
-};
-
-const parseMarkdownParts = (value: string): Array<MarkdownPart> =>
-  parseMarkdownDetails(value).flatMap((part) =>
-    part.type === 'markdown' ? splitMermaidBlocks(part.value) : [part],
-  );
-
-const needsPartRendering = (parts: ReadonlyArray<MarkdownPart>) =>
-  parts.some((part) => part.type !== 'markdown');
+const hasDetailsBlock = (parts: ReadonlyArray<MarkdownPart>) =>
+  parts.some((part) => part.type === 'details');
 
 // Nested `<details>` render their own button, so only this level's code is copied.
 const getOwnFencedCode = (parts: ReadonlyArray<MarkdownPart>) =>
   parts
-    .flatMap((part) =>
-      part.type === 'markdown'
-        ? extractFencedCodeBlocks(part.value)
-        : part.type === 'mermaid'
-          ? [part.code]
-          : [],
-    )
+    .filter((part) => part.type === 'markdown')
+    .flatMap((part) => extractFencedCodeBlocks(part.value))
     .join('\n\n');
-
-function CopyCodeButton({ code }: { code: string }) {
-  const [copied, markCopied] = useCopiedState(1600);
-
-  const handleClick = useCallback(
-    async (event: ReactMouseEvent<HTMLButtonElement>) => {
-      // The button lives inside `<summary>`, which would otherwise toggle.
-      event.preventDefault();
-      event.stopPropagation();
-      try {
-        await navigator.clipboard.writeText(code);
-      } catch {
-        return;
-      }
-      markCopied();
-    },
-    [code, markCopied],
-  );
-
-  const label = copied ? 'Code copied' : 'Copy code';
-
-  return (
-    <button
-      aria-label={label}
-      className={`codiff-copy-path-button codiff-copy-code-button${copied ? ' copied' : ''}`}
-      onClick={(event) => void handleClick(event)}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.stopPropagation();
-        }
-      }}
-      title={label}
-      type="button"
-    >
-      {copied ? (
-        <Check aria-hidden className="codiff-copy-path-icon check" size={16} weight="bold" />
-      ) : (
-        <LucideCopy aria-hidden className="codiff-copy-path-icon" size={16} strokeWidth={2.25} />
-      )}
-    </button>
-  );
-}
 
 function MarkdownSegment({
   additionalPlugins,
@@ -351,6 +232,7 @@ function MarkdownSegment({
         density="compact"
         onHeightChange={onHeightChange}
         readOnly
+        renderDiagrams
         spellCheck={false}
         suppressHtmlProcessing
         value={normalizedValue}
@@ -390,27 +272,7 @@ function MarkdownParts({
       );
     }
 
-    if (part.type === 'mermaid') {
-      return (
-        <MermaidDiagram
-          code={part.code}
-          key={`mermaid:${index}`}
-          onHeightChange={onHeightChange}
-          source={
-            <MarkdownSegment
-              additionalPlugins={additionalPlugins}
-              ariaLabel={`${ariaLabel} Mermaid source`}
-              contentClassName={contentClassName}
-              editorClassName={editorClassName}
-              onHeightChange={onHeightChange}
-              value={part.source}
-            />
-          }
-        />
-      );
-    }
-
-    const bodyParts = parseMarkdownParts(part.body);
+    const bodyParts = parseMarkdownDetails(part.body);
     const code = getOwnFencedCode(bodyParts);
 
     return (
@@ -461,9 +323,9 @@ export function ReadOnlyMarkdownView({
   variant?: MarkdownEditorProps['variant'];
 }) {
   const normalizedValue = useMemo(() => normalizeReadOnlyMarkdownValue(value), [value]);
-  const parts = useMemo(() => parseMarkdownParts(normalizedValue), [normalizedValue]);
+  const parts = useMemo(() => parseMarkdownDetails(normalizedValue), [normalizedValue]);
 
-  if (!needsPartRendering(parts)) {
+  if (!hasDetailsBlock(parts)) {
     if (!normalizedValue.trim()) {
       return null;
     }
@@ -486,6 +348,7 @@ export function ReadOnlyMarkdownView({
             density={density}
             onHeightChange={onHeightChange}
             readOnly
+            renderDiagrams
             spellCheck={false}
             suppressHtmlProcessing
             value={normalizedValue}

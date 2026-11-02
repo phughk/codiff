@@ -474,6 +474,8 @@ export type CodiffLaunchOptions = {
   walkthroughContext?: WalkthroughContext;
   /** Path to a pre-authored {@link NarrativeWalkthrough} JSON file (--walkthrough-file). */
   walkthroughFile?: string;
+  /** Result file where the app reports whether it applied {@link walkthroughFile}. */
+  walkthroughResultFile?: string;
 };
 
 export type AgentSkillStatus = {

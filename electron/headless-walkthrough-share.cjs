@@ -11,6 +11,7 @@ const {
   readWalkthroughRepositoryState,
 } = require('./git-state.cjs');
 const {
+  assertWalkthroughHunkIdsResolve,
   normalizeNarrativeWalkthrough,
   readNarrativeWalkthrough,
 } = require('./narrative-walkthrough.cjs');
@@ -186,6 +187,7 @@ const shareWalkthroughFile = async ({
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(`Could not read walkthrough file: ${detail}`);
   }
+  assertWalkthroughHunkIdsResolve(input, state.files);
 
   const walkthrough = normalizeNarrativeWalkthrough(input, state.files, {
     agent,
