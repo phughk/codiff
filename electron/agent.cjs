@@ -13,6 +13,7 @@ const { readPiSessionContext } = require('./pi-session-context.cjs');
  * @typedef {import('../core/types.ts').WalkthroughContext} WalkthroughContext
  * @typedef {{
  *   fallbackModel?: string;
+ *   investigate?: boolean;
  *   model?: string;
  *   onMetrics?: (metrics: {
  *     transport: 'app-server' | 'exec';
@@ -24,6 +25,7 @@ const { readPiSessionContext } = require('./pi-session-context.cjs');
  *       totalTokens: number;
  *     };
  *   }) => void;
+ *   onActivity?: (activity: import('../core/types.ts').AgentActivity) => void;
  *   onModelFallback?: (fallbackModel: string, originalModel: string) => Promise<void> | void;
  *   onPartialText?: (delta: string) => void;
  *   onProgress?: (phase: import('../core/types.ts').WalkthroughProgressPhase) => void;

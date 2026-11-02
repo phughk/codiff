@@ -2,6 +2,7 @@ import type { CodeViewHandle } from '@pierre/diffs/react';
 import type { ReactNode } from 'react';
 import type { CodiffAgentBackend } from '../config/types.ts';
 import type {
+  AgentActivity,
   AgentReviewSeverity,
   ChangedFile,
   DiffSection,
@@ -119,12 +120,16 @@ export type ReviewComment = {
   canResolveThread?: boolean;
   /** Follow-up questions to the agent after its first reply, oldest first. */
   codexFollowUps?: ReadonlyArray<{
+    /** Steps the agent took while investigating, in order. */
+    activity?: ReadonlyArray<AgentActivity>;
     error?: string;
     question: string;
     reply?: string;
     status: 'error' | 'loading' | 'ready';
   }>;
   codexReply?: {
+    /** Steps the agent took while investigating, in order. */
+    activity?: ReadonlyArray<AgentActivity>;
     body?: string;
     error?: string;
     status: 'error' | 'loading' | 'ready';

@@ -108,6 +108,7 @@ test('app review comments request and store assistant replies', async () => {
       sectionId: comment.sectionId,
       side: comment.side,
     },
+    requestId: expect.any(String),
     source: workingTreeState.source,
   });
   await waitFor(() => {
@@ -117,6 +118,64 @@ test('app review comments request and store assistant replies', async () => {
     });
   });
   expect(onCommentFileChange).toHaveBeenCalledTimes(2);
+});
+
+test('app review comments stream investigation steps into the pending reply', async () => {
+  type ActivityListener = Parameters<NonNullable<Window['codiff']['onReviewAssistantActivity']>>[0];
+  let listener: ActivityListener | null = null;
+  const unsubscribe = vi.fn(() => {
+    listener = null;
+  });
+  const reply = Promise.withResolvers<{ reply: string; status: 'ready' }>();
+  const askReviewAssistant = vi.fn(() => reply.promise);
+  window.codiff = {
+    askReviewAssistant,
+    onReviewAssistantActivity: (callback: ActivityListener) => {
+      listener = callback;
+      return unsubscribe;
+    },
+  } as unknown as Window['codiff'];
+  await using view = await renderAppReviewComments(workingTreeState);
+  const { getState } = view;
+
+  await act(async () => {
+    getState().setReviewComments([comment]);
+  });
+  await act(async () => {
+    getState().askCodex(comment.id);
+  });
+  const { requestId } = (askReviewAssistant.mock.calls[0] as unknown as [{ requestId: string }])[0];
+
+  await act(async () => {
+    listener?.({ activity: { kind: 'read', label: 'Read other.ts' }, requestId: 'other' });
+    listener?.({ activity: { kind: 'read', label: 'Read src/app.ts' }, requestId });
+    listener?.({
+      activity: { kind: 'search', label: 'Searched for `parse`' },
+      requestId,
+    });
+  });
+  expect(getState().reviewComments[0]?.codexReply).toEqual({
+    activity: [
+      { kind: 'read', label: 'Read src/app.ts' },
+      { kind: 'search', label: 'Searched for `parse`' },
+    ],
+    status: 'loading',
+  });
+
+  await act(async () => {
+    reply.resolve({ reply: 'It is used by the importer.', status: 'ready' });
+  });
+  await waitFor(() => {
+    expect(getState().reviewComments[0]?.codexReply).toEqual({
+      activity: [
+        { kind: 'read', label: 'Read src/app.ts' },
+        { kind: 'search', label: 'Searched for `parse`' },
+      ],
+      body: 'It is used by the importer.',
+      status: 'ready',
+    });
+  });
+  expect(unsubscribe).toHaveBeenCalledTimes(1);
 });
 
 test('app review comments submit a draft and replace it with the remote comment', async () => {

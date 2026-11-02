@@ -714,6 +714,18 @@ export type WalkthroughCommitMessageResult =
       status: 'unavailable';
     };
 
+/** One step an agent took while investigating, such as reading a file. */
+export type AgentActivity = {
+  detail?: string;
+  kind: 'command' | 'history' | 'list' | 'other' | 'read' | 'search';
+  label: string;
+};
+
+export type ReviewAssistantActivityEvent = {
+  activity: AgentActivity;
+  requestId: string;
+};
+
 export type ReviewAssistantRequest = {
   comment: {
     anchor?: 'file' | 'line';
@@ -729,6 +741,8 @@ export type ReviewAssistantRequest = {
   conversation?: ReadonlyArray<{ body: string; role: 'agent' | 'reviewer' }>;
   /** The reviewer's newest message when continuing a conversation. */
   followUp?: string;
+  /** Correlates streamed `AgentActivity` events with this request. */
+  requestId?: string;
   source?: ReviewSource;
   walkthroughNote?: {
     action: 'review' | 'scan' | 'skim';
@@ -742,6 +756,7 @@ export type ReviewAssistantRequest = {
 
 export type ReviewAssistantResult =
   | {
+      activity?: ReadonlyArray<AgentActivity>;
       reply: string;
       status: 'ready';
     }

@@ -4336,6 +4336,102 @@ diffs-container .review-comment-thread {
   color: var(--danger);
 }
 
+.review-comment-codex-loading .agent-activity-current {
+  align-items: center;
+  color: var(--text);
+  display: flex;
+  font: 12px/1.4 var(--font-sans);
+  gap: 6px;
+  justify-content: center;
+  margin-block-end: 6px;
+  min-width: 0;
+}
+
+.review-comment-codex-loading .agent-activity-count {
+  display: block;
+  font: 11px/1 var(--font-mono);
+}
+
+.agent-activity {
+  margin: 0 12px 10px;
+  min-width: 0;
+}
+
+.agent-activity-summary {
+  align-items: center;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font: 600 11px/1 var(--font-sans);
+  gap: 5px;
+  list-style: none;
+  padding: 4px 6px;
+  user-select: none;
+}
+
+.agent-activity-summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-activity-summary:hover {
+  background: var(--hover-wash);
+  color: var(--text);
+}
+
+.agent-activity-caret {
+  transform: rotate(-90deg);
+  transition: transform 120ms ease;
+}
+
+.agent-activity[open] .agent-activity-caret {
+  transform: none;
+}
+
+.agent-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0 0 0 6px;
+}
+
+.agent-activity-step {
+  align-items: baseline;
+  color: var(--muted);
+  display: flex;
+  font: 12px/1.4 var(--font-sans);
+  gap: 6px;
+  min-width: 0;
+}
+
+.agent-activity-icon {
+  align-self: center;
+  flex: none;
+}
+
+.agent-activity-label {
+  color: var(--text);
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-activity-detail {
+  font: 11px/1.4 var(--font-mono);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-comment-codex-loading .agent-activity-detail {
+  max-width: 40%;
+}
+
 .review-comment-codex-reply p,
 .review-comment-codex-reply ul,
 .review-comment-codex-reply pre {

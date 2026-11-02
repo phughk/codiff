@@ -5,6 +5,11 @@ const { join } = require('node:path');
 const { resolveAgentCommandTransport } = require('./agent-command.cjs');
 const { getCommandEnvironment } = require('./login-shell-environment.cjs');
 const {
+  CLAUDE_INVESTIGATION_ALLOWED_TOOLS,
+  CLAUDE_INVESTIGATION_TOOLS,
+  describeToolUse,
+} = require('./agent-activity.cjs');
+const {
   findExecutableOnPath,
   isExecutableFile,
   normalizeEnum,
@@ -25,7 +30,9 @@ const CLAUDE_NOT_LOGGED_IN_MESSAGE =
  * @typedef {{
  *   fallbackModel?: string;
  *   commandTransport?: import('./agent-command.cjs').AgentCommandTransport;
+ *   investigate?: boolean;
  *   model?: string;
+ *   onActivity?: (activity: import('../core/types.ts').AgentActivity) => void;
  *   onModelFallback?: (fallbackModel: string, originalModel: string) => Promise<void> | void;
  *   onProgress?: (phase: import('../core/types.ts').WalkthroughProgressPhase) => void;
  *   timeoutMs?: number;
@@ -137,10 +144,13 @@ const getClaudeLaunchError = (error) => {
 /**
  * Consume Claude Code `stream-json` events. Thinking and text deltas only
  * update semantic progress; no model text is forwarded outside this process.
+ * Tool calls are summarized as activity steps.
  *
  * @param {ClaudeOptions['onProgress']} onProgress
+ * @param {ClaudeOptions['onActivity']} [onActivity]
+ * @param {string} [root]
  */
-const createClaudeStreamParser = (onProgress) => {
+const createClaudeStreamParser = (onProgress, onActivity, root) => {
   /** @type {any} */
   let resultEnvelope = null;
   let lineBuffer = '';
@@ -153,6 +163,20 @@ const createClaudeStreamParser = (onProgress) => {
     }
     if (event.type === 'result') {
       resultEnvelope = event;
+      return;
+    }
+    if (event.type === 'assistant') {
+      const content = Array.isArray(event.message?.content) ? event.message.content : [];
+      for (const block of content) {
+        // Structured output is delivered through a synthetic tool, not an investigation step.
+        if (
+          block?.type === 'tool_use' &&
+          typeof block.name === 'string' &&
+          block.name !== 'StructuredOutput'
+        ) {
+          onActivity?.(describeToolUse(block.name, block.input, root));
+        }
+      }
       return;
     }
     if (event.type !== 'stream_event') {
@@ -216,9 +240,10 @@ const createClaudeStreamParser = (onProgress) => {
  * Run Claude Code headless as a pure, read-only structured-output call.
  *
  * Mirrors the shape of {@link runCodex}: prompt is sent on stdin, output is a
- * JSON string validated against the provided schema. Tools are fully disabled
- * so Claude answers only from the prompt text, and session persistence is off
- * so the call leaves no transcript behind.
+ * JSON string validated against the provided schema. Tools are disabled so
+ * Claude answers only from the prompt text, unless `options.investigate` is
+ * set, which enables read-only file tools and git history commands. Session
+ * persistence is off so the call leaves no transcript behind.
  *
  * @param {string} repoRoot
  * @param {string} prompt
@@ -254,7 +279,7 @@ const runClaude = async (
           options.commandTransport,
           getClaudeCommand,
         );
-        const streamProgress = Boolean(options.onProgress);
+        const streamProgress = Boolean(options.onProgress || options.onActivity);
         const claudeArgs = [
           '-p',
           '--output-format',
@@ -270,14 +295,19 @@ const runClaude = async (
           'dontAsk',
           '--no-session-persistence',
           '--tools',
-          '',
+          options.investigate ? CLAUDE_INVESTIGATION_TOOLS.join(',') : '',
+          ...(options.investigate
+            ? ['--allowedTools', CLAUDE_INVESTIGATION_ALLOWED_TOOLS.join(',')]
+            : []),
         ];
         const child = commandTransport.spawn(commandTransport.command, claudeArgs, {
           cwd: repoRoot,
           env: environment,
           stdio: ['pipe', 'pipe', 'pipe'],
         });
-        const streamParser = streamProgress ? createClaudeStreamParser(options.onProgress) : null;
+        const streamParser = streamProgress
+          ? createClaudeStreamParser(options.onProgress, options.onActivity, repoRoot)
+          : null;
 
         const timer = setTimeout(() => {
           if (!finished) {

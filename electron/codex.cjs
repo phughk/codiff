@@ -5,6 +5,7 @@ const { homedir, tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { resolveAgentCommandTransport } = require('./agent-command.cjs');
 const { getCommandEnvironment } = require('./login-shell-environment.cjs');
+const { describeCommand } = require('./agent-activity.cjs');
 const {
   cleanText,
   findExecutableOnPath,
@@ -28,7 +29,9 @@ const CODEX_NOT_FOUND_MESSAGE =
  * @typedef {{
  *   fallbackModel?: string;
  *   commandTransport?: import('./agent-command.cjs').AgentCommandTransport;
+ *   investigate?: boolean;
  *   model?: string;
+ *   onActivity?: (activity: import('../core/types.ts').AgentActivity) => void;
  *   onMetrics?: (metrics: {
  *     transport: 'app-server' | 'exec';
  *     usage?: {
@@ -273,12 +276,29 @@ const normalizeCodexUsage = (usage) => {
 };
 
 /**
+ * Summarizes a Codex command item as an activity step. Codex already runs in a
+ * read-only sandbox, so every command it starts is an investigation step.
+ *
+ * @param {any} item
+ * @param {CodexOptions['onActivity']} onActivity
+ * @param {string} root
+ */
+const reportCodexCommand = (item, onActivity, root) => {
+  const command = Array.isArray(item?.command) ? item.command.join(' ') : item?.command;
+  if (onActivity && typeof command === 'string' && command.trim()) {
+    onActivity(describeCommand(command, root));
+  }
+};
+
+/**
  * Consume `codex exec --json` JSONL without exposing model output. This is the
  * compatibility parser for older CLIs without app-server support.
  *
  * @param {CodexOptions['onProgress']} onProgress
+ * @param {CodexOptions['onActivity']} [onActivity]
+ * @param {string} [root]
  */
-const createCodexEventParser = (onProgress) => {
+const createCodexEventParser = (onProgress, onActivity, root = '') => {
   let lineBuffer = '';
   let lastMessage = '';
   let usage;
@@ -300,6 +320,9 @@ const createCodexEventParser = (onProgress) => {
     }
 
     const itemType = event.item?.type;
+    if (event.type === 'item.started' && itemType === 'command_execution') {
+      reportCodexCommand(event.item, onActivity, root);
+    }
     if (
       (event.type === 'item.started' && itemType !== 'agent_message') ||
       (event.type === 'item.completed' && itemType === 'reasoning')
@@ -428,7 +451,11 @@ const runCodex = async (
           env: environment,
           stdio: ['pipe', 'pipe', 'pipe'],
         });
-        const eventParser = createCodexEventParser(options.onProgress);
+        const eventParser = createCodexEventParser(
+          options.onProgress,
+          options.onActivity,
+          repoRoot,
+        );
 
         const timer = setTimeout(() => {
           if (!finished) {
@@ -617,6 +644,11 @@ const runCodex = async (
 
         const method = message?.method;
         const params = message?.params;
+        if (method === 'item/started' && params?.item?.type === 'commandExecution') {
+          reportCodexCommand(params.item, options.onActivity, repoRoot);
+          options.onProgress?.('agent-generation');
+          return;
+        }
         if (method === 'thread/tokenUsage/updated') {
           usage = normalizeCodexUsage(params?.tokenUsage?.total);
           return;
@@ -631,6 +663,13 @@ const runCodex = async (
           options.onProgress?.('agent-generation');
           return;
         }
+        // Tool-using turns can emit several agent messages (e.g. a preamble before
+        // reading files); only the last one carries the structured answer.
+        if (method === 'item/started' && params?.item?.type === 'agentMessage') {
+          streamedMessage = '';
+          options.onProgress?.('response-received');
+          return;
+        }
         if (method === 'item/agentMessage/delta') {
           options.onProgress?.('response-received');
           if (typeof params?.delta === 'string') {
@@ -640,7 +679,7 @@ const runCodex = async (
         }
         if (method === 'item/completed' && params?.item?.type === 'agentMessage') {
           options.onProgress?.('response-received');
-          if (!streamedMessage && typeof params.item.text === 'string') {
+          if (typeof params.item.text === 'string' && params.item.text) {
             streamedMessage = params.item.text;
           }
           return;
@@ -790,7 +829,7 @@ const runCodex = async (
 
   /** @param {string} codexModel */
   const invokeCodex = async (codexModel) => {
-    if (!options.onProgress) {
+    if (!options.onProgress && !options.onActivity) {
       return invokeCodexExec(codexModel);
     }
     try {

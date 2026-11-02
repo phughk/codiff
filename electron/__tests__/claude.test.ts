@@ -30,7 +30,9 @@ const {
     timeoutMessage?: string,
     options?: {
       commandTransport?: CommandTransport;
+      investigate?: boolean;
       model?: string;
+      onActivity?: (activity: { detail?: string; kind: string; label: string }) => void;
       onProgress?: (phase: string) => void;
       timeoutMs?: number;
     },
@@ -117,6 +119,91 @@ process.stdin.on('end', () => {
   expect(args).toContain('--add-dir');
   expect(args).toContain(directory.path);
   expect(args).toContain('--no-session-persistence');
+});
+
+test('enables read-only tools and reports tool calls when investigating', async () => {
+  const events = [
+    {
+      message: {
+        content: [
+          {
+            input: { file_path: '/repo/src/state.ts', offset: 20 },
+            name: 'Read',
+            type: 'tool_use',
+          },
+          { input: { path: '/repo/src', pattern: 'syncState' }, name: 'Grep', type: 'tool_use' },
+        ],
+      },
+      type: 'assistant',
+    },
+    {
+      message: {
+        content: [
+          {
+            input: { command: 'git log --oneline -5 -- src/state.ts' },
+            name: 'Bash',
+            type: 'tool_use',
+          },
+          { input: { reply: 'Done.' }, name: 'StructuredOutput', type: 'tool_use' },
+        ],
+      },
+      type: 'assistant',
+    },
+    {
+      is_error: false,
+      result: '',
+      structured_output: { reply: 'Done.', version: 1 },
+      type: 'result',
+    },
+  ];
+  const { calls, transport } = createCommandTransport(({ close, stdin, stdout }) => {
+    stdin.on('finish', () => {
+      stdout(events.map((event) => JSON.stringify(event)).join('\n'));
+      close();
+    });
+  });
+  const activity: Array<{ detail?: string; kind: string; label: string }> = [];
+
+  await expect(
+    runClaude('/repo', 'prompt', { type: 'object' }, 'review-assistant.json', 'Timed out.', {
+      commandTransport: transport,
+      investigate: true,
+      onActivity: (step) => activity.push(step),
+    }),
+  ).resolves.toBe('{"reply":"Done.","version":1}');
+
+  const args = calls[0].args;
+  expect(args).toContain('stream-json');
+  expect(args[args.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Bash');
+  const allowedTools = args[args.indexOf('--allowedTools') + 1].split(',');
+  expect(allowedTools).toEqual(expect.arrayContaining(['Read', 'Grep', 'Bash(git log:*)']));
+  expect(allowedTools.some((tool) => /Edit|Write|Bash\(\*|^Bash$/.test(tool))).toBe(false);
+  expect(activity).toEqual([
+    { detail: 'from line 20', kind: 'read', label: 'Read src/state.ts' },
+    { detail: 'in src', kind: 'search', label: 'Searched for `syncState`' },
+    {
+      detail: 'git log --oneline -5 -- src/state.ts',
+      kind: 'history',
+      label: 'Checked git log',
+    },
+  ]);
+});
+
+test('keeps Claude tools disabled unless investigating', async () => {
+  const { calls, transport } = createCommandTransport(({ close, stdin, stdout }) => {
+    stdin.on('finish', () => {
+      stdout('{"is_error":false,"result":"{}","structured_output":{"version":1}}');
+      close();
+    });
+  });
+
+  await runClaude('/repo', 'prompt', { type: 'object' }, 'out.json', 'Timed out.', {
+    commandTransport: transport,
+  });
+
+  const args = calls[0].args;
+  expect(args[args.indexOf('--tools') + 1]).toBe('');
+  expect(args).not.toContain('--allowedTools');
 });
 
 test('maps Claude thinking and text deltas to semantic walkthrough progress', async () => {

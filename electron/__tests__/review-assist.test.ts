@@ -8,7 +8,8 @@ const { readReviewAssistantReply } = require('../review-assist.cjs') as {
     request: unknown,
     agent: unknown,
     agentOptions: unknown,
-  ) => Promise<{ reply?: string; status: string }>;
+    investigation?: { onActivity?: (step: unknown) => void; workspaceRoot?: string | null },
+  ) => Promise<{ activity?: ReadonlyArray<unknown>; reply?: string; status: string }>;
 };
 
 const readReply = async (
@@ -259,4 +260,60 @@ test('review assistant continues a conversation with its earlier turns', async (
     ],
     followUp: 'What breaks without it?',
   });
+});
+
+test('review assistant investigates in the workspace checkout with read-only tools', async () => {
+  const steps = [
+    { kind: 'read', label: 'Read src/state.ts' },
+    { kind: 'search', label: 'Searched for `synchronized`' },
+  ];
+  const run = vi.fn(
+    async (
+      _root: string,
+      _prompt: string,
+      _schema: unknown,
+      _outputName: string,
+      _timeoutMessage: string,
+      options: { onActivity?: (step: unknown) => void },
+    ) => {
+      for (const step of steps) {
+        options.onActivity?.(step);
+      }
+      return JSON.stringify({ reply: 'It is read by the sync worker.', version: 1 });
+    },
+  );
+  const onActivity = vi.fn();
+
+  const result = await readReviewAssistantReply(
+    createPullRequestAssistantState(''),
+    pullRequestAssistantRequest,
+    { defaultTimeoutMs: 90_000, isNotFoundError: () => false, label: 'Claude Code', run },
+    { model: 'sonnet' },
+    { onActivity, workspaceRoot: '/tmp/codiff-worktrees/repo/abc123' },
+  );
+
+  const [root, prompt, , , , options] = run.mock.calls[0]!;
+  expect(root).toBe('/tmp/codiff-worktrees/repo/abc123');
+  expect(prompt).toContain('read-only checkout of the code under review');
+  expect(prompt).toContain('/tmp/codiff-worktrees/repo/abc123');
+  expect(prompt).toContain('Lead with the direct answer');
+  expect(prompt).not.toContain('do not inspect the repository');
+  expect(options).toMatchObject({ investigate: true, model: 'sonnet', timeoutMs: 300_000 });
+  expect(onActivity.mock.calls.map(([step]) => step)).toEqual(steps);
+  expect(result).toEqual({
+    activity: steps,
+    reply: 'It is read by the sync worker.',
+    status: 'ready',
+  });
+});
+
+test('review assistant answers from the digest alone without a workspace', async () => {
+  const { prompt, result } = await readReply(
+    createPullRequestAssistantState(''),
+    pullRequestAssistantRequest,
+  );
+
+  expect(prompt).toContain('do not inspect the repository');
+  expect(prompt).not.toContain('read-only checkout');
+  expect(result).not.toHaveProperty('activity');
 });

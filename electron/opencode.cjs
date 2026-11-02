@@ -305,6 +305,30 @@ const consumeOpenCodeEventStream = async (response, sessionId, onProgress, state
   }
 };
 
+/** Read-only OpenCode tools allowed while investigating a question. */
+const OPENCODE_INVESTIGATION_TOOLS = Object.freeze(['glob', 'grep', 'list', 'read']);
+
+/** @param {boolean | undefined} investigate */
+const getOpenCodePermissionEnv = (investigate) =>
+  JSON.stringify({
+    '*': 'deny',
+    ...(investigate
+      ? Object.fromEntries(OPENCODE_INVESTIGATION_TOOLS.map((tool) => [tool, 'allow']))
+      : {}),
+  });
+
+/** Later rules take precedence, so allowances follow the blanket deny. @param {boolean | undefined} investigate */
+const getOpenCodeSessionPermission = (investigate) => [
+  { action: 'deny', pattern: '*', permission: '*' },
+  ...(investigate
+    ? OPENCODE_INVESTIGATION_TOOLS.map((permission) => ({
+        action: 'allow',
+        pattern: '*',
+        permission,
+      }))
+    : []),
+];
+
 /** @param {string} model */
 const getOpenCodeServerModel = (model) => {
   if (model === DEFAULT_OPENCODE_MODEL) {
@@ -323,6 +347,7 @@ const getOpenCodeServerModel = (model) => {
  * @param {{
  *   commandTransport?: import('./agent-command.cjs').AgentCommandTransport;
  *   fallbackModel?: string;
+ *   investigate?: boolean;
  *   model?: string;
  *   onModelFallback?: (fallbackModel: string, originalModel: string) => Promise<void> | void;
  *   onPartialText?: (delta: string) => void;
@@ -373,7 +398,7 @@ const runOpenCode = async (
           cwd: repoRoot,
           env: {
             ...environment,
-            OPENCODE_PERMISSION: JSON.stringify({ '*': 'deny' }),
+            OPENCODE_PERMISSION: getOpenCodePermissionEnv(options.investigate),
           },
           stdio: ['pipe', 'pipe', 'pipe'],
         });
@@ -449,7 +474,7 @@ const runOpenCode = async (
         cwd: repoRoot,
         env: {
           ...environment,
-          OPENCODE_PERMISSION: JSON.stringify({ '*': 'deny' }),
+          OPENCODE_PERMISSION: getOpenCodePermissionEnv(options.investigate),
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
@@ -535,7 +560,7 @@ const runOpenCode = async (
       const sessionResponse = await request('/session', {
         body: JSON.stringify({
           agent: 'build',
-          permission: [{ action: 'deny', pattern: '*', permission: '*' }],
+          permission: getOpenCodeSessionPermission(options.investigate),
           title: 'Codiff walkthrough',
         }),
         headers: { 'content-type': 'application/json' },

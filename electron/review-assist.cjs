@@ -7,8 +7,12 @@ const MAX_OTHER_FILES = 40;
 const MAX_SOURCE_DESCRIPTION_CHARS = 4_000;
 const MAX_CONVERSATION_TURNS = 20;
 const MAX_TURN_CHARS = 4_000;
+const MAX_ACTIVITY_STEPS = 200;
+// Investigating means several tool calls before answering, so give it room.
+const INVESTIGATION_TIMEOUT_MS = 300_000;
 
 /**
+ * @typedef {import('../core/types.ts').AgentActivity} AgentActivity
  * @typedef {import('../core/types.ts').ChangedFile} ChangedFile
  * @typedef {import('../core/types.ts').RepositoryState} RepositoryState
  * @typedef {import('../core/types.ts').ReviewAssistantRequest} ReviewAssistantRequest
@@ -104,16 +108,36 @@ const buildReviewAssistantInput = (state, request) => {
   };
 };
 
-/** @param {RepositoryState} state @param {Partial<ReviewAssistantRequest> | null | undefined} request @param {string} [agentLabel] */
+/** @param {string | null | undefined} workspaceRoot */
+const getInvestigationInstructions = (workspaceRoot) =>
+  workspaceRoot
+    ? `
+You can investigate before answering. Your working directory is a read-only checkout of the code under review (${workspaceRoot}), at the head of the change. Read files, search the code, list directories, and use read-only git commands (\`git log\`, \`git show\`, \`git blame\`, \`git diff\`, \`git grep\`) to answer questions the digest alone cannot: callers and callees, how a changed function is used elsewhere, surrounding code, history, and wider design questions.
+- Start from the digest and only investigate what the question needs. Small questions about the visible patch need no tool calls.
+- Make as many targeted tool calls as the question needs, then stop and answer.
+- Never modify files, install packages, or access the network.
+- Cite the code you rely on as \`path:line\` so the reviewer can check it.
+`
+    : `
+Use only the repository change digest below; do not inspect the repository or run shell commands.
+`;
+
+/**
+ * @param {RepositoryState} state
+ * @param {Partial<ReviewAssistantRequest> | null | undefined} request
+ * @param {string} [agentLabel]
+ * @param {string | null} [workspaceRoot]
+ */
 const buildReviewAssistantPrompt = (
   state,
   request,
   agentLabel = 'Codex',
+  workspaceRoot = null,
 ) => `You are ${agentLabel} inside Codiff.
 
-A human reviewer wrote a rough inline review note and clicked Ask ${agentLabel}.
+A human reviewer wrote an inline review note or question and clicked Ask ${agentLabel}.
 Reply as a concise assistant in the same inline conversation.
-Use only the repository change digest below; do not inspect the repository or run shell commands.
+${getInvestigationInstructions(workspaceRoot)}
 If there is walkthrough context, use it as review orientation, not as proof.
 If source.description is present, treat it as author-written PR/MR intent and orientation, not proof of behavior. The changed files and patch excerpt remain the source of truth for what changed.
 You are the code-review expert in this conversation, so explain the change directly.
@@ -132,10 +156,11 @@ Your job:
 - Prefer questions and concrete risks over accusations.
 - Do not hedge. Avoid words and phrases like "appears", "seems", "might", "likely", "probably", "I think", "I suspect", and "the intent".
 - Say "This change introduces...", "This change moves...", or "This is needed because..." instead of "This change appears to...".
-- If the diff does not provide enough evidence, state the concrete uncertainty after the explanation.
-- Do not say the change is correct unless the diff proves it.
-- Do not invent bugs, unstated requirements, or files outside the digest.
-- Keep the reply under 180 words.
+- Lead with the direct answer in the first sentence, then the supporting evidence. Do not narrate your investigation steps.
+- If the evidence is not enough, state the concrete uncertainty after the explanation.
+- Do not say the change is correct unless the evidence proves it.
+- Do not invent bugs, unstated requirements, or files${workspaceRoot ? ' you did not read' : ' outside the digest'}.
+- Keep the reply under ${workspaceRoot ? '300' : '180'} words.
 - Markdown is allowed.
 
 Repository change digest:
@@ -156,24 +181,53 @@ const normalizeReviewAssistantReply = (input, agentLabel = 'Codex') => ({
 });
 
 /**
+ * Answers a reviewer's note. With `workspaceRoot`, the agent runs there with
+ * read-only tools so it can investigate beyond the diff, and reports each step
+ * through `onActivity`.
+ *
  * @param {RepositoryState} state
  * @param {ReviewAssistantRequest} request
  * @param {Agent} agent
  * @param {AgentOptions} agentOptions
+ * @param {{onActivity?: (activity: AgentActivity) => void; workspaceRoot?: string | null}} [investigation]
  */
-const readReviewAssistantReply = async (state, request, agent, agentOptions) => {
+const readReviewAssistantReply = async (
+  state,
+  request,
+  agent,
+  agentOptions,
+  { onActivity, workspaceRoot = null } = {},
+) => {
+  /** @type {Array<AgentActivity>} */
+  const activity = [];
   try {
     const response = await agent.run(
-      state.root,
-      buildReviewAssistantPrompt(state, request, agent.label),
+      workspaceRoot || state.root,
+      buildReviewAssistantPrompt(state, request, agent.label, workspaceRoot),
       reviewAssistantSchema,
       'review-assistant.json',
       `${agent.label} review reply timed out.`,
-      agentOptions,
+      workspaceRoot
+        ? {
+            ...agentOptions,
+            investigate: true,
+            onActivity: (step) => {
+              if (activity.length < MAX_ACTIVITY_STEPS) {
+                activity.push(step);
+                onActivity?.(step);
+              }
+            },
+            timeoutMs: Math.max(
+              agentOptions.timeoutMs ?? agent.defaultTimeoutMs ?? 0,
+              INVESTIGATION_TIMEOUT_MS,
+            ),
+          }
+        : agentOptions,
     );
     const parsed = parseJSONMessage(response);
 
     return {
+      ...(activity.length > 0 ? { activity } : {}),
       reply: normalizeReviewAssistantReply(parsed, agent.label).reply,
       status: 'ready',
     };
@@ -193,4 +247,4 @@ const readReviewAssistantReply = async (state, request, agent, agentOptions) => 
   }
 };
 
-module.exports = { readReviewAssistantReply };
+module.exports = { buildReviewAssistantPrompt, readReviewAssistantReply };

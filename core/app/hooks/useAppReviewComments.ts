@@ -10,6 +10,7 @@ import {
 } from '../../lib/review-comments.ts';
 import { getSourceKey } from '../../lib/source.ts';
 import type {
+  AgentActivity,
   AgentReviewComment,
   PullRequestReviewEvent,
   PullRequestReviewStatus,
@@ -180,6 +181,9 @@ export function useAppReviewComments({
             ),
           ]
         : [];
+      const requestId = `${comment.id}:${Date.now().toString(36)}:${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
       const request: ReviewAssistantRequest = {
         comment: {
           body: comment.body,
@@ -190,20 +194,56 @@ export function useAppReviewComments({
           ...getReviewCommentRangeProps(comment),
         },
         ...(followUp ? { conversation, followUp: question } : {}),
+        requestId,
         source: currentState.source,
       };
 
       const index = followUps.length;
-      const settle = (reply: { error?: string; reply?: string }) => {
-        const status = reply.reply != null ? ('ready' as const) : ('error' as const);
+      const writeTurn = (turn: {
+        activity?: ReadonlyArray<AgentActivity>;
+        error?: string;
+        reply?: string;
+        status: 'error' | 'loading' | 'ready';
+      }) => {
+        const activity = turn.activity?.length ? { activity: turn.activity } : {};
         if (followUp) {
-          updateCodexFollowUp(comment.id, comment.filePath, index, { question, ...reply, status });
+          updateCodexFollowUp(comment.id, comment.filePath, index, {
+            ...activity,
+            ...(turn.error != null ? { error: turn.error } : {}),
+            question,
+            ...(turn.reply != null ? { reply: turn.reply } : {}),
+            status: turn.status,
+          });
         } else {
           updateCodexReply(comment.id, comment.filePath, {
-            ...(reply.reply != null ? { body: reply.reply } : { error: reply.error }),
-            status,
+            ...activity,
+            ...(turn.reply != null ? { body: turn.reply } : {}),
+            ...(turn.error != null ? { error: turn.error } : {}),
+            status: turn.status,
           });
         }
+      };
+
+      // Investigation steps stream in while the agent works on the answer.
+      const activity: Array<AgentActivity> = [];
+      const unsubscribe = window.codiff.onReviewAssistantActivity?.((event) => {
+        if (event.requestId !== requestId) {
+          return;
+        }
+        activity.push(event.activity);
+        writeTurn({ activity: [...activity], status: 'loading' });
+      });
+      const settle = (reply: {
+        activity?: ReadonlyArray<AgentActivity>;
+        error?: string;
+        reply?: string;
+      }) => {
+        unsubscribe?.();
+        writeTurn({
+          ...reply,
+          activity: reply.activity ?? activity,
+          status: reply.reply != null ? 'ready' : 'error',
+        });
       };
 
       if (followUp) {
@@ -221,7 +261,11 @@ export function useAppReviewComments({
       void window.codiff
         .askReviewAssistant(request)
         .then((result) =>
-          settle(result.status === 'ready' ? { reply: result.reply } : { error: result.reason }),
+          settle(
+            result.status === 'ready'
+              ? { activity: result.activity, reply: result.reply }
+              : { error: result.reason },
+          ),
         )
         .catch((error: unknown) =>
           settle({ error: error instanceof Error ? error.message : String(error) }),

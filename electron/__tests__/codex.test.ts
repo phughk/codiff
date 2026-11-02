@@ -34,6 +34,7 @@ const {
       fallbackModel?: string;
       commandTransport?: CommandTransport;
       model?: string;
+      onActivity?: (activity: { detail?: string; kind: string; label: string }) => void;
       onMetrics?: (metrics: {
         transport: string;
         usage?: {
@@ -538,6 +539,99 @@ test('falls back to codex exec when app-server is unavailable', async () => {
       onProgress: () => {},
     }),
   ).resolves.toBe('{"version":1}');
+});
+
+test('reports Codex command executions as investigation activity', async () => {
+  const { transport } = createCommandTransport((commandProcess) => {
+    if (commandProcess.args[0] === 'app-server') {
+      queueMicrotask(() => {
+        commandProcess.stderr("error: unrecognized subcommand 'app-server'");
+        commandProcess.close(2);
+      });
+      return;
+    }
+    commandProcess.stdin.on(
+      'finish',
+      () =>
+        void completeCodexExec(
+          commandProcess,
+          '{"version":1}',
+          [
+            {
+              item: { command: "bash -lc 'rg -n parseState src'", type: 'command_execution' },
+              type: 'item.started',
+            },
+            {
+              item: {
+                command: "bash -lc 'sed -n 1,40p /repo/src/state.ts'",
+                type: 'command_execution',
+              },
+              type: 'item.started',
+            },
+            { item: { text: '{"version":1}', type: 'agent_message' }, type: 'item.completed' },
+          ]
+            .map((event) => JSON.stringify(event))
+            .join('\n'),
+        ),
+    );
+  });
+  const activity: Array<{ detail?: string; kind: string; label: string }> = [];
+
+  await expect(
+    runCodex('/repo', 'prompt', {}, 'review-assistant.json', 'Timed out.', {
+      commandTransport: transport,
+      onActivity: (step) => activity.push(step),
+    }),
+  ).resolves.toBe('{"version":1}');
+
+  expect(activity).toEqual([
+    { detail: 'rg -n parseState src', kind: 'search', label: 'Searched the code' },
+    { detail: 'sed -n 1,40p src/state.ts', kind: 'read', label: 'Read a file' },
+  ]);
+});
+
+test('reports app-server commands and keeps only the final agent message', async () => {
+  const { transport } = createCommandTransport((commandProcess) => {
+    const send = (message: unknown) => commandProcess.stdout(`${JSON.stringify(message)}\n`);
+    let buffer = '';
+    commandProcess.stdin.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines.filter(Boolean)) {
+        const message = JSON.parse(line);
+        if (message.method === 'initialize') {
+          send({ id: message.id, result: {} });
+        } else if (message.method === 'thread/start') {
+          send({ id: message.id, result: { thread: { id: 'thread-1' } } });
+        } else if (message.method === 'turn/start') {
+          send({ id: message.id, result: { turn: { id: 'turn-1' } } });
+          send({ method: 'item/started', params: { item: { type: 'agentMessage' } } });
+          send({ method: 'item/agentMessage/delta', params: { delta: 'Let me look.' } });
+          send({
+            method: 'item/started',
+            params: {
+              item: { command: "/bin/zsh -lc 'rg -n sync /repo/src'", type: 'commandExecution' },
+            },
+          });
+          send({ method: 'item/started', params: { item: { type: 'agentMessage' } } });
+          send({ method: 'item/agentMessage/delta', params: { delta: '{"version":1}' } });
+          send({ method: 'turn/completed', params: { turn: { items: [], status: 'completed' } } });
+        }
+      }
+    });
+  });
+  const activity: Array<{ detail?: string; kind: string; label: string }> = [];
+
+  await expect(
+    runCodex('/repo', 'prompt', {}, 'review-assistant.json', 'Timed out.', {
+      commandTransport: transport,
+      onActivity: (step) => activity.push(step),
+    }),
+  ).resolves.toBe('{"version":1}');
+  expect(activity).toEqual([
+    { detail: 'rg -n sync src', kind: 'search', label: 'Searched the code' },
+  ]);
 });
 
 test('forwards per-call Codex reasoning effort overrides', async () => {

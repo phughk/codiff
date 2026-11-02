@@ -104,6 +104,12 @@ const codiff = {
     ipcRenderer.on('codiff:copyPendingCommentsRequest', listener);
     return () => ipcRenderer.removeListener('codiff:copyPendingCommentsRequest', listener);
   },
+  onReviewAssistantActivity: (callback) => {
+    /** @param {Electron.IpcRendererEvent} _event @param {import('../core/types.ts').ReviewAssistantActivityEvent} payload */
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('codiff:reviewAssistantActivity', listener);
+    return () => ipcRenderer.removeListener('codiff:reviewAssistantActivity', listener);
+  },
   onEditReviewPrompt: (callback) => {
     const listener = () => callback();
     ipcRenderer.on('codiff:editReviewPrompt', listener);

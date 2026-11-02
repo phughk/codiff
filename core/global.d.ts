@@ -25,6 +25,7 @@ import type {
   RepositoryHistory,
   RepositoryFileDocument,
   RepositoryState,
+  ReviewAssistantActivityEvent,
   ReviewAssistantRequest,
   ReviewAssistantResult,
   ReviewSource,
@@ -108,6 +109,9 @@ declare global {
       onPlanCloseRequested: (callback: () => void) => () => void;
       onRefreshRequest: (callback: () => void) => () => void;
       onRepositoryChanged: (callback: (change: { root: string }) => void) => () => void;
+      onReviewAssistantActivity?: (
+        callback: (payload: ReviewAssistantActivityEvent) => void,
+      ) => () => void;
       onSessionCommentReplyRequest: (
         callback: (reply: {
           agentId?: CodiffAgentBackend;

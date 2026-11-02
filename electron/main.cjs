@@ -2125,7 +2125,19 @@ ipcMain.handle('codiff:askReviewAssistant', async (event, request) => {
     request?.source || launchOptions?.source,
   );
   const { agent, agentOptions } = resolveWindowTaskAgent(event.sender.id, 'ask');
-  return readReviewAssistantReply(state, request, agent, agentOptions);
+  // Investigate in a checkout of the reviewed head so the agent can read code
+  // beyond the diff; pull requests get a detached worktree when needed.
+  const workspaceRoot = await resolveEditorRoot(state.root, state.source).catch(() => state.root);
+  const requestId = typeof request?.requestId === 'string' ? request.requestId : null;
+  const sender = event.sender;
+  return readReviewAssistantReply(state, request, agent, agentOptions, {
+    onActivity: (activity) => {
+      if (requestId && !sender.isDestroyed()) {
+        sender.send('codiff:reviewAssistantActivity', { activity, requestId });
+      }
+    },
+    workspaceRoot,
+  });
 });
 
 ipcMain.handle('codiff:reviewDiffWithAgent', async (event, request) => {

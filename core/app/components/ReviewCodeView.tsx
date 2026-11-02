@@ -6,7 +6,12 @@ import { ChatCircleDotsIcon as ChatCircleDots } from '@phosphor-icons/react/Chat
 import { CheckIcon as Check } from '@phosphor-icons/react/Check';
 import { CodeIcon as Code } from '@phosphor-icons/react/Code';
 import { ColumnsIcon as Columns } from '@phosphor-icons/react/Columns';
+import { DotsThreeIcon as DotsThree } from '@phosphor-icons/react/DotsThree';
+import { FileTextIcon as FileText } from '@phosphor-icons/react/FileText';
+import { FolderOpenIcon as FolderOpen } from '@phosphor-icons/react/FolderOpen';
+import { GitCommitIcon as GitCommit } from '@phosphor-icons/react/GitCommit';
 import { ImageBrokenIcon as ImageBroken } from '@phosphor-icons/react/ImageBroken';
+import { MagnifyingGlassIcon as MagnifyingGlass } from '@phosphor-icons/react/MagnifyingGlass';
 import { PencilSimpleIcon as PencilSimple } from '@phosphor-icons/react/PencilSimple';
 import { SquareSplitVerticalIcon as SquareSplitVertical } from '@phosphor-icons/react/SquareSplitVertical';
 import { TerminalWindowIcon as TerminalWindow } from '@phosphor-icons/react/TerminalWindow';
@@ -120,6 +125,7 @@ import { getScrollLineProgress } from '../../lib/review-scroll.ts';
 import { applySearchHighlights } from '../../lib/search-highlights.ts';
 import { getSourceKey } from '../../lib/source.ts';
 import type {
+  AgentActivity,
   AgentReviewSeverity,
   ChangedFile,
   CodiffPreferences,
@@ -2088,7 +2094,12 @@ function ReviewCommentEditor({
           <AgentReply
             agentId={agentId}
             agentLabel={agentLabel}
-            reply={{ body: turn.reply, error: turn.error, status: turn.status }}
+            reply={{
+              activity: turn.activity,
+              body: turn.reply,
+              error: turn.error,
+              status: turn.status,
+            }}
           />
         </Fragment>
       ))}
@@ -2133,6 +2144,50 @@ const noopResolveThread = () => {};
 // layout pass is needed when the description body settles.
 const noopLayoutReady = () => {};
 
+const agentActivityIcons: Record<AgentActivity['kind'], typeof FileText> = {
+  command: TerminalWindow,
+  history: GitCommit,
+  list: FolderOpen,
+  other: DotsThree,
+  read: FileText,
+  search: MagnifyingGlass,
+};
+
+const formatStepCount = (count: number) => `${count} ${count === 1 ? 'step' : 'steps'}`;
+
+function AgentActivityStep({ step }: { step: AgentActivity }) {
+  const Icon = agentActivityIcons[step.kind] ?? DotsThree;
+  return (
+    <>
+      <Icon aria-hidden className="agent-activity-icon" size={13} weight="bold" />
+      <span className="agent-activity-label">{step.label}</span>
+      {step.detail ? <code className="agent-activity-detail">{step.detail}</code> : null}
+    </>
+  );
+}
+
+/**
+ * The agent's investigation, collapsed under its answer. The answer stays the
+ * focus; reviewers can open this to check what the agent looked at.
+ */
+function AgentActivityDisclosure({ activity }: { activity: ReadonlyArray<AgentActivity> }) {
+  return (
+    <details className="agent-activity">
+      <summary className="agent-activity-summary">
+        <CaretDown aria-hidden className="agent-activity-caret" size={11} weight="bold" />
+        Investigated in {formatStepCount(activity.length)}
+      </summary>
+      <ol className="agent-activity-list">
+        {activity.map((step, index) => (
+          <li className="agent-activity-step" key={index}>
+            <AgentActivityStep step={step} />
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
 function AgentReply({
   agentId,
   agentLabel,
@@ -2140,8 +2195,15 @@ function AgentReply({
 }: {
   agentId: 'codex' | 'claude' | 'opencode' | 'pi';
   agentLabel: string;
-  reply: { body?: string; error?: string; status: 'error' | 'loading' | 'ready' };
+  reply: {
+    activity?: ReadonlyArray<AgentActivity>;
+    body?: string;
+    error?: string;
+    status: 'error' | 'loading' | 'ready';
+  };
 }) {
+  const activity = reply.activity ?? [];
+  const currentStep = activity.at(-1);
   return (
     <div className="review-comment codex">
       <AgentAvatar agentId={agentId} />
@@ -2155,7 +2217,20 @@ function AgentReply({
           }`}
         >
           {reply.status === 'loading' ? (
-            <span className="review-comment-codex-loading">Waiting for {agentLabel}…</span>
+            <div aria-live="polite" className="review-comment-codex-loading" role="status">
+              {currentStep ? (
+                <>
+                  <span className="agent-activity-current">
+                    <AgentActivityStep step={currentStep} />
+                  </span>
+                  <span className="agent-activity-count">
+                    Investigating · {formatStepCount(activity.length)}
+                  </span>
+                </>
+              ) : (
+                <>Waiting for {agentLabel}…</>
+              )}
+            </div>
           ) : (
             <ReadOnlyMarkdown
               ariaLabel={`${agentLabel} reply`}
@@ -2166,6 +2241,9 @@ function AgentReply({
             />
           )}
         </div>
+        {reply.status !== 'loading' && activity.length > 0 ? (
+          <AgentActivityDisclosure activity={activity} />
+        ) : null}
       </div>
     </div>
   );
