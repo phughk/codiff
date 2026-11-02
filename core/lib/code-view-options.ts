@@ -126,6 +126,36 @@ export const codeViewUnsafeCSS = `
     overflow: visible;
   }
 
+  /*
+   * Pierre's layout budgets a file header and bottom spacing for every item,
+   * but walkthrough stop headers render no file header and, being
+   * overflow: visible, lose the scrollbar gutter that makes up the bottom
+   * spacing. While the item is mounted the browser places the next item by its
+   * real height. Once it scrolls out of the render window, Pierre places the
+   * next item by the budget instead, and the content jumps. Reserve the header
+   * slot, draw the stop content over it, and restore the full bottom padding
+   * so the rendered height matches the budget.
+   */
+  :host(.codiff-walkthrough-header-item) [data-diffs-header] {
+    height: var(--codiff-file-header-height);
+    pointer-events: none;
+  }
+
+  /* contain: content would clip the stop content drawn over the header slot. */
+  :host(.codiff-walkthrough-header-item) [data-code] {
+    contain: none;
+    padding-bottom: var(--diffs-gap-block, var(--diffs-gap-fallback));
+  }
+
+  :host(.codiff-walkthrough-header-item) [data-line-annotation] {
+    display: flow-root;
+  }
+
+  :host(.codiff-walkthrough-header-item) [data-annotation-content] {
+    margin-top: calc(-1 * var(--codiff-file-header-height));
+    position: relative;
+  }
+
   :host(.codiff-walkthrough-header-item) [data-column-number],
   :host(.codiff-walkthrough-header-item) [data-line-number],
   :host(.codiff-walkthrough-header-item) [data-gutter],
