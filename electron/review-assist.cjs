@@ -4,6 +4,10 @@ const { parseJSONMessage, truncate } = require('./agent-shared.cjs');
 
 const MAX_PATCH_CHARS = 24_000;
 const MAX_OTHER_FILES = 40;
+// A question about the whole change has no focus file, so describe more of them.
+const MAX_CHANGE_FILES = 120;
+const MAX_QUESTION_PATCH_CHARS = 8_000;
+const MAX_QUESTION_CHARS = 4_000;
 const MAX_SOURCE_DESCRIPTION_CHARS = 4_000;
 const MAX_CONVERSATION_TURNS = 20;
 const MAX_TURN_CHARS = 4_000;
@@ -58,9 +62,59 @@ const getConversationInput = (request) => {
   return { conversation, followUp: truncate(followUp, MAX_TURN_CHARS) };
 };
 
+/** @param {Partial<ReviewAssistantRequest> | null | undefined} request */
+const getQuestion = (request) =>
+  request?.comment == null && typeof request?.question === 'string'
+    ? truncate(request.question.trim(), MAX_QUESTION_CHARS)
+    : '';
+
+/** @param {RepositoryState} state */
+const getSourceInput = (state) =>
+  state.source.type === 'pull-request' && typeof state.source.description === 'string'
+    ? {
+        ...state.source,
+        description: truncate(state.source.description, MAX_SOURCE_DESCRIPTION_CHARS),
+      }
+    : state.source;
+
+/**
+ * Digest for a question about the whole change rather than one note: every
+ * changed file with its section summaries, plus a short excerpt of the patch.
+ *
+ * @param {RepositoryState} state
+ * @param {Partial<ReviewAssistantRequest> | null | undefined} request
+ */
+const buildChangeQuestionInput = (state, request) => {
+  let remainingPatchChars = MAX_QUESTION_PATCH_CHARS;
+  /** @type {Array<{path: string; patch: string}>} */
+  const patchExcerpts = [];
+  for (const file of state.files) {
+    for (const section of file.sections) {
+      if (remainingPatchChars <= 0 || !section.patch) {
+        continue;
+      }
+      const patch = truncate(section.patch, Math.min(remainingPatchChars, 2_000));
+      remainingPatchChars -= patch.length;
+      patchExcerpts.push({ patch, path: file.path });
+    }
+  }
+  return {
+    changedFileCount: state.files.length,
+    changedFiles: state.files.slice(0, MAX_CHANGE_FILES).map(getFileDigest),
+    ...getConversationInput(request),
+    patchExcerpts,
+    question: getQuestion(request),
+    root: state.root,
+    source: getSourceInput(state),
+  };
+};
+
 /** @param {RepositoryState} state @param {Partial<ReviewAssistantRequest> | null | undefined} request */
 const buildReviewAssistantInput = (state, request) => {
-  /** @type {Partial<ReviewAssistantRequest['comment']>} */
+  if (getQuestion(request)) {
+    return buildChangeQuestionInput(state, request);
+  }
+  /** @type {Partial<NonNullable<ReviewAssistantRequest['comment']>>} */
   const comment = request?.comment ?? {};
   const file = state.files.find((candidate) => candidate.path === comment.filePath);
   const section = file?.sections.find((candidate) => candidate.id === comment.sectionId);
@@ -97,13 +151,7 @@ const buildReviewAssistantInput = (state, request) => {
       .map(getFileDigest),
     root: state.root,
     ...getConversationInput(request),
-    source:
-      state.source.type === 'pull-request' && typeof state.source.description === 'string'
-        ? {
-            ...state.source,
-            description: truncate(state.source.description, MAX_SOURCE_DESCRIPTION_CHARS),
-          }
-        : state.source,
+    source: getSourceInput(state),
     walkthroughNote: request?.walkthroughNote ?? null,
   };
 };
@@ -113,6 +161,8 @@ const getInvestigationInstructions = (workspaceRoot) =>
   workspaceRoot
     ? `
 You can investigate before answering. Your working directory is a read-only checkout of the code under review (${workspaceRoot}), at the head of the change. Read files, search the code, list directories, and use read-only git commands (\`git log\`, \`git show\`, \`git blame\`, \`git diff\`, \`git grep\`) to answer questions the digest alone cannot: callers and callees, how a changed function is used elsewhere, surrounding code, history, and wider design questions.
+- Navigate code by symbol: find a definition by searching for its declaration (for example \`function name\`, \`class Name\`, \`const name =\`, \`def name\`), then find references with a word-boundary search (\`git grep -nw name\`). When \`ast-grep\` (\`sg\`) is installed, use \`sg --pattern '<pattern>' --lang <lang>\` for structural searches such as every call of a function.
+- To see what the change touched beyond the digest, diff the head against the base (\`git diff <base>...HEAD --stat\`, then specific paths).
 - Start from the digest and only investigate what the question needs. Small questions about the visible patch need no tool calls.
 - Make as many targeted tool calls as the question needs, then stop and answer.
 - Never modify files, install packages, or access the network.
@@ -135,8 +185,12 @@ const buildReviewAssistantPrompt = (
   workspaceRoot = null,
 ) => `You are ${agentLabel} inside Codiff.
 
-A human reviewer wrote an inline review note or question and clicked Ask ${agentLabel}.
-Reply as a concise assistant in the same inline conversation.
+${
+  getQuestion(request)
+    ? `A human reviewer is asking you a question about the whole change under review, not about one line. The digest's question field holds it. Answer it as a code-review expert: questions can be about design, behavior, risk, how parts of the change fit together, or how the change interacts with code outside the diff.`
+    : `A human reviewer wrote an inline review note or question and clicked Ask ${agentLabel}.
+Reply as a concise assistant in the same inline conversation.`
+}
 ${getInvestigationInstructions(workspaceRoot)}
 If there is walkthrough context, use it as review orientation, not as proof.
 If source.description is present, treat it as author-written PR/MR intent and orientation, not proof of behavior. The changed files and patch excerpt remain the source of truth for what changed.
@@ -144,7 +198,7 @@ You are the code-review expert in this conversation, so explain the change direc
 ${
   getConversationInput(request).followUp
     ? `
-The reviewer is continuing the conversation. The digest's conversation lists your earlier replies ("agent") and the reviewer's follow-ups ("reviewer") after the original note, oldest first; followUp is the reviewer's newest message.
+The reviewer is continuing the conversation. The digest's conversation lists your earlier replies ("agent") and the reviewer's follow-ups ("reviewer") after the original ${getQuestion(request) ? 'question' : 'note'}, oldest first; followUp is the reviewer's newest message.
 Answer followUp directly. Build on what was already said instead of repeating it, and correct an earlier reply if the diff shows it was wrong.
 `
     : ''
@@ -160,7 +214,7 @@ Your job:
 - If the evidence is not enough, state the concrete uncertainty after the explanation.
 - Do not say the change is correct unless the evidence proves it.
 - Do not invent bugs, unstated requirements, or files${workspaceRoot ? ' you did not read' : ' outside the digest'}.
-- Keep the reply under ${workspaceRoot ? '300' : '180'} words.
+- Keep the reply under ${getQuestion(request) ? '450' : workspaceRoot ? '300' : '180'} words.
 - Markdown is allowed.
 
 Repository change digest:

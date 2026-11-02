@@ -317,3 +317,90 @@ test('review assistant answers from the digest alone without a workspace', async
   expect(prompt).not.toContain('read-only checkout');
   expect(result).not.toHaveProperty('activity');
 });
+
+test('review assistant answers questions about the whole change without a note', async () => {
+  const state = {
+    ...createPullRequestAssistantState('Keep state synchronized.'),
+    files: [
+      {
+        path: 'src/state.ts',
+        sections: [
+          {
+            binary: false,
+            id: 'src/state.ts:pull-request:42',
+            kind: 'pull-request',
+            patch: '+const synchronized = true;',
+            summary: { reason: 'State sync.' },
+          },
+        ],
+        status: 'modified',
+      },
+      {
+        path: 'src/worker.ts',
+        sections: [
+          {
+            binary: false,
+            id: 'src/worker.ts:pull-request:42',
+            kind: 'pull-request',
+            patch: '+syncState();',
+          },
+        ],
+        status: 'added',
+      },
+    ],
+  };
+
+  const { digest, prompt } = await readReply(state, {
+    question: '  How does the worker use the new state?  ',
+  });
+  const changeDigest = digest as unknown as {
+    changedFileCount: number;
+    changedFiles: ReadonlyArray<{ path: string; summaries: ReadonlyArray<string> }>;
+    patchExcerpts: ReadonlyArray<{ patch: string; path: string }>;
+    question: string;
+  };
+
+  expect(prompt).toContain('question about the whole change');
+  expect(prompt).not.toContain('clicked Ask');
+  expect(prompt).toContain('under 450 words');
+  expect(changeDigest.question).toBe('How does the worker use the new state?');
+  expect(changeDigest.changedFileCount).toBe(2);
+  expect(changeDigest.changedFiles.map((file) => file.path)).toEqual([
+    'src/state.ts',
+    'src/worker.ts',
+  ]);
+  expect(changeDigest.changedFiles[0]?.summaries).toEqual(['State sync.']);
+  expect(changeDigest.patchExcerpts).toEqual([
+    { patch: '+const synchronized = true;', path: 'src/state.ts' },
+    { patch: '+syncState();', path: 'src/worker.ts' },
+  ]);
+  expect(digest).not.toHaveProperty('comment');
+  expect(digest.source.description).toBe('Keep state synchronized.');
+
+  const followUp = await readReply(state, {
+    conversation: [{ body: 'It calls syncState on start.', role: 'agent' }],
+    followUp: 'And on shutdown?',
+    question: 'How does the worker use the new state?',
+  });
+  expect(followUp.prompt).toContain('after the original question');
+  expect(followUp.digest).toMatchObject({
+    conversation: [{ body: 'It calls syncState on start.', role: 'agent' }],
+    followUp: 'And on shutdown?',
+    question: 'How does the worker use the new state?',
+  });
+});
+
+test('review assistant suggests symbol navigation while investigating', async () => {
+  const run = vi.fn(async () => JSON.stringify({ reply: 'Done.', version: 1 }));
+  await readReviewAssistantReply(
+    createPullRequestAssistantState(''),
+    { question: 'Who calls syncState?' },
+    { isNotFoundError: () => false, label: 'Claude Code', run },
+    {},
+    { workspaceRoot: '/repo' },
+  );
+  const prompt = (run.mock.calls[0] as unknown as [string, string])[1];
+  expect(prompt).toContain('Navigate code by symbol');
+  expect(prompt).toContain('git grep -nw');
+  expect(prompt).toContain('ast-grep');
+});

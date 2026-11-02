@@ -23,8 +23,10 @@ const CLAUDE_INVESTIGATION_ALLOWED_TOOLS = Object.freeze([
   'Grep',
   'Glob',
   ...READ_ONLY_GIT_COMMANDS.map((command) => `Bash(git ${command}:*)`),
+  'Bash(ast-grep:*)',
   'Bash(ls:*)',
   'Bash(rg:*)',
+  'Bash(sg:*)',
   'Bash(wc:*)',
 ]);
 
@@ -64,6 +66,9 @@ const describeCommand = (command, root) => {
     text = text.split(`${root}/`).join('');
   }
   const [program = '', subcommand = ''] = text.split(/\s+/);
+  if (/^(?:ast-grep|sg)$/.test(program)) {
+    return { detail: clip(text), kind: 'search', label: 'Searched the syntax tree' };
+  }
   if (/^(?:rg|grep|ag)$/.test(program) || (program === 'git' && subcommand === 'grep')) {
     return { detail: clip(text), kind: 'search', label: 'Searched the code' };
   }

@@ -35,6 +35,10 @@ test('classifies shell commands and unwraps Codex shells', () => {
     label: 'Checked git blame',
   });
   expect(describeCommand('git grep -n parse', '/repo')).toMatchObject({ kind: 'search' });
+  expect(describeCommand("sg --pattern 'syncState($$$)' --lang ts", '/repo')).toMatchObject({
+    kind: 'search',
+    label: 'Searched the syntax tree',
+  });
   expect(describeCommand('ls -la src', '/repo')).toMatchObject({ kind: 'list' });
   expect(describeCommand('node -e 1', '/repo')).toMatchObject({ kind: 'command' });
   expect(describeCommand(`rg ${'x'.repeat(400)}`).detail?.length).toBeLessThanOrEqual(160);

@@ -4,6 +4,7 @@ import { PathIcon as Path } from '@phosphor-icons/react/Path';
 import { TreeStructureIcon as TreeStructure } from '@phosphor-icons/react/TreeStructure';
 import type { FileDiffLoadedFiles } from '@pierre/diffs';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AskButton, AskPanel } from './app/components/AskPanel.tsx';
 import { CommandBar } from './app/components/CommandBar.tsx';
 import { KeyboardShortcutsHelp } from './app/components/KeyboardShortcutsHelp.tsx';
 import { OpenReviewSourceDialog } from './app/components/OpenReviewSourceDialog.tsx';
@@ -44,6 +45,7 @@ import { useAppCommands } from './app/hooks/useAppCommands.ts';
 import { useAppKeyboardShortcuts } from './app/hooks/useAppKeyboardShortcuts.ts';
 import { useAppReviewComments } from './app/hooks/useAppReviewComments.ts';
 import { useAppWalkthrough } from './app/hooks/useAppWalkthrough.ts';
+import { useChangeQuestions } from './app/hooks/useChangeQuestions.ts';
 import { createCodeEditingStore, useUnsavedCodeEditsGuard } from './app/hooks/useCodeEditing.ts';
 import { useDiffSearch } from './app/hooks/useDiffSearch.ts';
 import {
@@ -338,6 +340,12 @@ export default function App({
     onCommentFileChange: bumpItemVersion,
     stateRef,
   });
+  const {
+    ask: askAboutChange,
+    clear: clearChangeQuestions,
+    getTurns: getChangeQuestionTurns,
+  } = useChangeQuestions(stateRef);
+  const [askPanelVisible, setAskPanelVisible] = useState(false);
   const collapseSidebar = useCallback(() => {
     setSidebarCollapsed(true);
   }, []);
@@ -1868,6 +1876,7 @@ export default function App({
   const agentLabel = getAgentLabel(activeAgentBackend);
   // Each AI task can run on its own agent, chosen in the Agent per Task menu.
   const askAgentBackend = codiffConfig.settings.taskAgents.ask.agent || activeAgentBackend;
+  const changeQuestionTurns = getChangeQuestionTurns(state ? getSourceKey(state.source) : null);
   const reviewAgentBackend = codiffConfig.settings.taskAgents.review.agent || activeAgentBackend;
   const walkthroughAgentLabel = getAgentLabel(
     codiffConfig.settings.taskAgents.walkthrough.agent || activeAgentBackend,
@@ -2120,6 +2129,12 @@ export default function App({
               onReview={reviewWithAgent}
               state={getAgentReviewState(getSourceKey(state.source))}
             />
+            <AskButton
+              active={askPanelVisible}
+              disabled={isSwitchingSource}
+              loading={changeQuestionTurns.some((turn) => turn.status === 'loading')}
+              onToggle={() => setAskPanelVisible((visible) => !visible)}
+            />
             <CopyCommentsButton
               comments={isSwitchingSource ? emptyReviewComments : reviewComments}
               files={orderedFiles}
@@ -2195,6 +2210,14 @@ export default function App({
       <WalkthroughOutdatedBanner
         onDismiss={() => setWalkthroughFileError(null)}
         reason={walkthroughFileError?.reason ?? null}
+      />
+      <AskPanel
+        agentLabel={getAgentLabel(askAgentBackend)}
+        onAsk={askAboutChange}
+        onClear={clearChangeQuestions}
+        onClose={() => setAskPanelVisible(false)}
+        turns={changeQuestionTurns}
+        visible={askPanelVisible && !isSwitchingSource}
       />
       <DiffSearchPanel
         activeIndex={effectiveActiveDiffSearchMatchIndex}

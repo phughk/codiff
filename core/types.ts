@@ -727,7 +727,8 @@ export type ReviewAssistantActivityEvent = {
 };
 
 export type ReviewAssistantRequest = {
-  comment: {
+  /** The note being asked about. Omitted for a `question` about the whole change. */
+  comment?: {
     anchor?: 'file' | 'line';
     body: string;
     filePath: string;
@@ -741,6 +742,8 @@ export type ReviewAssistantRequest = {
   conversation?: ReadonlyArray<{ body: string; role: 'agent' | 'reviewer' }>;
   /** The reviewer's newest message when continuing a conversation. */
   followUp?: string;
+  /** A question about the whole change, asked without a note. */
+  question?: string;
   /** Correlates streamed `AgentActivity` events with this request. */
   requestId?: string;
   source?: ReviewSource;

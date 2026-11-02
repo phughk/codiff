@@ -6,12 +6,7 @@ import { ChatCircleDotsIcon as ChatCircleDots } from '@phosphor-icons/react/Chat
 import { CheckIcon as Check } from '@phosphor-icons/react/Check';
 import { CodeIcon as Code } from '@phosphor-icons/react/Code';
 import { ColumnsIcon as Columns } from '@phosphor-icons/react/Columns';
-import { DotsThreeIcon as DotsThree } from '@phosphor-icons/react/DotsThree';
-import { FileTextIcon as FileText } from '@phosphor-icons/react/FileText';
-import { FolderOpenIcon as FolderOpen } from '@phosphor-icons/react/FolderOpen';
-import { GitCommitIcon as GitCommit } from '@phosphor-icons/react/GitCommit';
 import { ImageBrokenIcon as ImageBroken } from '@phosphor-icons/react/ImageBroken';
-import { MagnifyingGlassIcon as MagnifyingGlass } from '@phosphor-icons/react/MagnifyingGlass';
 import { PencilSimpleIcon as PencilSimple } from '@phosphor-icons/react/PencilSimple';
 import { SquareSplitVerticalIcon as SquareSplitVertical } from '@phosphor-icons/react/SquareSplitVertical';
 import { TerminalWindowIcon as TerminalWindow } from '@phosphor-icons/react/TerminalWindow';
@@ -149,6 +144,7 @@ import {
 } from '../hooks/useCodeEditing.ts';
 import { useCodeViewAnnotations } from '../hooks/useCodeViewAnnotations.ts';
 import { useCodeViewPlaceholderFile } from '../hooks/useCodeViewPlaceholderFile.ts';
+import { AgentActivityDisclosure, AgentActivityStep, formatStepCount } from './AgentActivity.tsx';
 import { agentIconUrl } from './agentIcon.ts';
 import { Avatar } from './Avatar.tsx';
 import { Button } from './Button.tsx';
@@ -2143,50 +2139,6 @@ const noopResolveThread = () => {};
 // The CodeView header host is measured by a ResizeObserver, so no manual
 // layout pass is needed when the description body settles.
 const noopLayoutReady = () => {};
-
-const agentActivityIcons: Record<AgentActivity['kind'], typeof FileText> = {
-  command: TerminalWindow,
-  history: GitCommit,
-  list: FolderOpen,
-  other: DotsThree,
-  read: FileText,
-  search: MagnifyingGlass,
-};
-
-const formatStepCount = (count: number) => `${count} ${count === 1 ? 'step' : 'steps'}`;
-
-function AgentActivityStep({ step }: { step: AgentActivity }) {
-  const Icon = agentActivityIcons[step.kind] ?? DotsThree;
-  return (
-    <>
-      <Icon aria-hidden className="agent-activity-icon" size={13} weight="bold" />
-      <span className="agent-activity-label">{step.label}</span>
-      {step.detail ? <code className="agent-activity-detail">{step.detail}</code> : null}
-    </>
-  );
-}
-
-/**
- * The agent's investigation, collapsed under its answer. The answer stays the
- * focus; reviewers can open this to check what the agent looked at.
- */
-function AgentActivityDisclosure({ activity }: { activity: ReadonlyArray<AgentActivity> }) {
-  return (
-    <details className="agent-activity">
-      <summary className="agent-activity-summary">
-        <CaretDown aria-hidden className="agent-activity-caret" size={11} weight="bold" />
-        Investigated in {formatStepCount(activity.length)}
-      </summary>
-      <ol className="agent-activity-list">
-        {activity.map((step, index) => (
-          <li className="agent-activity-step" key={index}>
-            <AgentActivityStep step={step} />
-          </li>
-        ))}
-      </ol>
-    </details>
-  );
-}
 
 function AgentReply({
   agentId,
