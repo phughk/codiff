@@ -267,6 +267,8 @@ export type RepositoryState = {
   revision?: string;
   root: string;
   source: ReviewSource;
+  /** Remote Viewed files mapped to current fingerprints; absent when unavailable. */
+  viewedFiles?: Readonly<Record<string, string>>;
 };
 
 export type CodiffFeatureFlags = {
@@ -966,6 +968,12 @@ export type SubmitPullRequestCommentRequest = {
   /** Add the comment to the viewer's pending review instead of publishing it right away. */
   pending?: boolean;
   source: Extract<ReviewSource, { type: 'pull-request' }>;
+};
+
+export type SetPullRequestFileViewedRequest = {
+  path: string;
+  source: Extract<ReviewSource, { type: 'pull-request' }>;
+  viewed: boolean;
 };
 
 export type SubmitPullRequestReviewRequest = {

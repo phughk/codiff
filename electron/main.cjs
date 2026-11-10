@@ -25,6 +25,7 @@ const {
   readRepositoryState,
   readSourceRevision,
   readWalkthroughRepositoryState,
+  setPullRequestFileViewed,
   submitPullRequestComment,
   submitPullRequestReview,
   updatePendingPullRequestComment,
@@ -2193,6 +2194,11 @@ ipcMain.handle('codiff:deletePendingPullRequestComment', async (event, request) 
 ipcMain.handle('codiff:submitPullRequestReview', async (event, request) => {
   const repositoryPath = windowRepositories.get(event.sender.id) || getLaunchPath();
   return submitPullRequestReview(repositoryPath, request);
+});
+
+ipcMain.handle('codiff:setPullRequestFileViewed', async (event, request) => {
+  const repositoryPath = windowRepositories.get(event.sender.id) || getLaunchPath();
+  return setPullRequestFileViewed(repositoryPath, request);
 });
 
 ipcMain.handle('codiff:getDiffSectionContent', async (event, request) => {

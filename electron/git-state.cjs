@@ -36,6 +36,7 @@ const {
   readPullRequestState,
   resolvePullRequestContentRefs,
   selectUnresolvedReviewComments,
+  setPullRequestFileViewed,
   submitPullRequestComment,
   submitPullRequestReview,
   updatePendingPullRequestComment,
@@ -256,6 +257,7 @@ module.exports = {
   readWalkthroughRepositoryState,
   readWorkingTreeState,
   resolvePullRequestContentRefs,
+  setPullRequestFileViewed,
   submitPullRequestComment: (launchPath, request) =>
     (isGitLabReviewSource(request.source) ? submitMergeRequestComment : submitPullRequestComment)(
       launchPath,

@@ -33,6 +33,7 @@ import type {
   SaveMarkdownDocumentResult,
   SaveRepositoryFileRequest,
   SaveRepositoryFileResult,
+  SetPullRequestFileViewedRequest,
   SharePlanResult,
   SharedWalkthroughSnapshot,
   ShareWalkthroughResult,
@@ -137,6 +138,7 @@ declare global {
       savePlanReview: (review: PlanReview) => Promise<PlanReview>;
       saveRepositoryFile: (request: SaveRepositoryFileRequest) => Promise<SaveRepositoryFileResult>;
       setDiffStyle: (value: CodiffPreferences['diffStyle']) => Promise<void>;
+      setPullRequestFileViewed: (request: SetPullRequestFileViewedRequest) => Promise<void>;
       setReviewPrompt: (value: string) => Promise<void>;
       setShowOutdated: (value: boolean) => Promise<void>;
       setWordWrap: (value: boolean) => Promise<void>;
