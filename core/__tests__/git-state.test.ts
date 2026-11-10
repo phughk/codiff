@@ -1433,6 +1433,39 @@ test('readRepositoryState opens branch refs as current branch diffs against the 
   });
 });
 
+test('readRepositoryState reads moved files in a branch diff as renames, not whole-file adds', async () => {
+  await withRepo(async (repo) => {
+    const body = Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join('\n');
+    await writeRepoFile(repo, 'tests/support/rows.rs', `${body}\n`);
+    await writeRepoFile(repo, 'tests/support/scripted.rs', `scripted\n${body}\n`);
+    await writeRepoFile(repo, 'tests/main.rs', 'mod support;\n');
+    await commitAll(repo, 'initial commit');
+    const baseBranch = (await git(repo, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
+
+    await git(repo, ['checkout', '-b', 'feature']);
+    await mkdir(join(repo, 'src/bundles'), { recursive: true });
+    await git(repo, ['mv', 'tests/support/rows.rs', 'src/bundles/rows.rs']);
+    await git(repo, ['mv', 'tests/support/scripted.rs', 'src/bundles/scripted.rs']);
+    await writeRepoFile(repo, 'src/bundles/rows.rs', `${body}\nline 41\n`);
+    await writeRepoFile(repo, 'tests/main.rs', 'use crate::bundles;\n');
+    await commitAll(repo, 'move support into src');
+
+    const state = await readRepositoryState(repo, { ref: baseBranch, type: 'branch' });
+    const rows = state.files.find((file) => file.path === 'src/bundles/rows.rs');
+    const scripted = state.files.find((file) => file.path === 'src/bundles/scripted.rs');
+
+    expect(rows).toMatchObject({ oldPath: 'tests/support/rows.rs', status: 'renamed' });
+    expect(rows?.sections[0].patch).toContain('rename from tests/support/rows.rs');
+    expect(rows?.sections[0].patch).not.toContain('@@ -0,0');
+    expect(rows?.sections[0].patch).toContain('+line 41');
+    expect(scripted).toMatchObject({ oldPath: 'tests/support/scripted.rs', status: 'renamed' });
+    expect(scripted?.sections[0].patch).not.toContain('new file mode');
+    expect(state.files.find((file) => file.path === 'tests/main.rs')?.sections[0].patch).toContain(
+      '+use crate::bundles;',
+    );
+  });
+});
+
 test('readSourceRevision detects when a branch comparison or range moves', async () => {
   await withRepo(async (repo) => {
     await writeRepoFile(repo, 'file.txt', 'base\n');
