@@ -1,6 +1,12 @@
 export type CodiffDiffStyle = 'split' | 'unified';
 export type CodiffTheme = 'system' | 'light' | 'dark';
 export type CodiffAgentBackend = 'codex' | 'claude' | 'opencode' | 'pi';
+/**
+ * How a branch comparison (`codiff <branch>`) presents uncommitted changes:
+ * as separate staged/unstaged sections after the branch diff, joined into one
+ * merge-base → working tree diff, or only one side.
+ */
+export type BranchLocalChangesMode = 'branch' | 'combined' | 'local' | 'separate';
 /** The AI operations whose agent and model can be chosen separately. */
 export type CodiffAgentTask = 'ask' | 'review' | 'walkthrough';
 
@@ -12,6 +18,7 @@ export type CodiffTaskAgent = {
 
 export type CodiffSettings = {
   agentBackend: CodiffAgentBackend;
+  branchLocalChanges: BranchLocalChangesMode;
   checkForUpdates: boolean;
   claudeModel: string;
   codeFontFamily: string;

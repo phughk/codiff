@@ -889,6 +889,7 @@ module.exports = {
   readGitFile,
   readGitImageFile,
   readIndexImageFile,
+  readWorkingTreeFile,
   readWorkingTreeImageFile,
   summarizeContent,
   validateRepositoryPath,

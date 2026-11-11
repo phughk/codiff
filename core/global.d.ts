@@ -137,6 +137,7 @@ declare global {
       ) => Promise<SaveMarkdownDocumentResult>;
       savePlanReview: (review: PlanReview) => Promise<PlanReview>;
       saveRepositoryFile: (request: SaveRepositoryFileRequest) => Promise<SaveRepositoryFileResult>;
+      setBranchLocalChanges: (value: CodiffPreferences['branchLocalChanges']) => Promise<void>;
       setDiffStyle: (value: CodiffPreferences['diffStyle']) => Promise<void>;
       setPullRequestFileViewed: (request: SetPullRequestFileViewedRequest) => Promise<void>;
       setReviewPrompt: (value: string) => Promise<void>;

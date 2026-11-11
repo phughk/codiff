@@ -1,6 +1,7 @@
 {
   "settings": {
     "agentBackend": "codex",
+    "branchLocalChanges": "separate",
     "checkForUpdates": true,
     "claudeModel": "sonnet",
     "codeFontFamily": "",

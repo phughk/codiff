@@ -159,11 +159,17 @@ default, and an empty `model` uses that agent's model setting.
 Set `settings.showWhitespace` to `true` to show whitespace-only changes in diffs and file line
 counts; when it is `false`, Codiff hides those changes from the working-tree review state.
 
+`settings.branchLocalChanges` controls how `codiff <branch>` shows uncommitted changes: `separate`
+(the default) lists the branch diff followed by staged and unstaged sections, `combined` shows one
+diff from the merge-base to your working tree, and `branch` or `local` shows only one side. Switch it
+from the branch label in the top bar, **View → Diff → Branch Local Changes**, or the command bar.
+
 ```jsonc
 {
   "$schema": "https://raw.githubusercontent.com/nkzw-tech/codiff/main/core/config/codiff-config.schema.json",
   "settings": {
     "agentBackend": "codex",
+    "branchLocalChanges": "separate",
     "claudeModel": "sonnet",
     "codeFontFamily": "",
     "codeFontSize": 13,

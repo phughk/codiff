@@ -155,6 +155,20 @@ const parseJsonc = (text) => JSON.parse(stripTrailingCommas(stripJsoncComments(t
 const normalizeTheme = (theme) =>
   theme === 'system' || theme === 'light' || theme === 'dark' ? theme : 'system';
 
+/** @type {ReadonlyArray<{label: string; value: import('../core/types.ts').BranchLocalChangesMode}>} */
+const branchLocalChangesModes = [
+  { label: 'Separate', value: 'separate' },
+  { label: 'Combined', value: 'combined' },
+  { label: 'Branch Only', value: 'branch' },
+  { label: 'Local Only', value: 'local' },
+];
+
+/** @param {unknown} value @returns {import('../core/types.ts').BranchLocalChangesMode} */
+const normalizeBranchLocalChanges = (value) =>
+  value === 'branch' || value === 'combined' || value === 'local' || value === 'separate'
+    ? value
+    : 'separate';
+
 /** @param {unknown} diffStyle @returns {CodiffDiffStyle} */
 const normalizeDiffStyle = (diffStyle) =>
   diffStyle === 'split' || diffStyle === 'unified' ? diffStyle : 'split';
@@ -318,6 +332,7 @@ const mergeConfig = (raw) => {
     },
     settings: {
       agentBackend: normalizeAgentBackend(rawSettings.agentBackend),
+      branchLocalChanges: normalizeBranchLocalChanges(rawSettings.branchLocalChanges),
       checkForUpdates:
         typeof rawSettings.checkForUpdates === 'boolean'
           ? rawSettings.checkForUpdates
@@ -536,6 +551,8 @@ const configToPreferences = (config) => ({
 });
 
 module.exports = {
+  branchLocalChangesModes,
+  normalizeBranchLocalChanges,
   configToPreferences,
   createDefaultConfig,
   getConfigPath,

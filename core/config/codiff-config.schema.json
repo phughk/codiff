@@ -20,6 +20,12 @@
           "default": "codex",
           "description": "Which agent CLI powers review assistance and walkthroughs. 'codex' uses the OpenAI Codex CLI; 'claude' uses the Claude Code CLI; 'opencode' uses the OpenCode CLI; 'pi' uses the Pi CLI."
         },
+        "branchLocalChanges": {
+          "type": "string",
+          "enum": ["separate", "combined", "branch", "local"],
+          "default": "separate",
+          "description": "How `codiff <branch>` shows uncommitted changes. 'separate' shows the branch diff followed by staged and unstaged sections; 'combined' shows one diff from the merge-base to the working tree; 'branch' shows only committed branch changes; 'local' shows only uncommitted changes."
+        },
         "checkForUpdates": {
           "type": "boolean",
           "default": true,

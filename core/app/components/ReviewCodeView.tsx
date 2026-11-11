@@ -187,7 +187,11 @@ const isEditableWorkingTreeSection = (
   (sourceType === 'working-tree' || sourceType === 'branch-working-tree') &&
   file.status !== 'deleted' &&
   file.sections.at(-1)?.id === section.id &&
-  (section.kind === 'staged' || section.kind === 'unstaged');
+  (section.kind === 'staged' || section.kind === 'unstaged' || section.kind === 'combined');
+
+// Sections whose new side is the working tree file itself, so edits apply directly.
+const isWorkingTreeSectionKind = (meta: { section: DiffSection } | undefined) =>
+  meta?.section.kind === 'unstaged' || meta?.section.kind === 'combined';
 
 function CopyFilePathButton({ path }: { path: string }) {
   const [copied, markCopied] = useCopiedState(1600);
@@ -3623,10 +3627,9 @@ export function ReviewCodeView({
   const selectedCodeItemId =
     highlightedCodeItems.find(
       (item) =>
-        item.id === selectedLines?.id && itemMetadata.get(item.id)?.section.kind === 'unstaged',
+        item.id === selectedLines?.id && isWorkingTreeSectionKind(itemMetadata.get(item.id)),
     )?.id ??
-    highlightedCodeItems.find((item) => itemMetadata.get(item.id)?.section.kind === 'unstaged')
-      ?.id ??
+    highlightedCodeItems.find((item) => isWorkingTreeSectionKind(itemMetadata.get(item.id)))?.id ??
     highlightedCodeItems[0]?.id;
   const codeEditing = useCodeEditing({
     codeViewRef,
@@ -3651,7 +3654,7 @@ export function ReviewCodeView({
         meta.section.loadState === 'deferred') &&
       !meta.isMarkdownPreview &&
       !meta.isGraphPreview &&
-      meta.section.kind === 'unstaged' &&
+      isWorkingTreeSectionKind(meta) &&
       isEditableWorkingTreeSection(source.type, meta.file, meta.section) &&
       onLoadSectionContents != null &&
       window.codiff?.getRepositoryFile != null,

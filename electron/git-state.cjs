@@ -71,7 +71,7 @@ const { annotateGeneratedFiles } = require('./generated-files.cjs');
  * @typedef {import('../core/types.ts').ReviewSource} ReviewSource
  */
 
-/** @param {string} launchPath @param {ReviewSource} [source] @param {{showWhitespace?: boolean}} [options] @returns {Promise<RepositoryState>} */
+/** @param {string} launchPath @param {ReviewSource} [source] @param {{localChanges?: import('../core/types.ts').BranchLocalChangesMode; showWhitespace?: boolean}} [options] @returns {Promise<RepositoryState>} */
 const readRepositoryState = async (launchPath, source = { type: 'working-tree' }, options = {}) => {
   const state =
     source.type === 'pull-request'
@@ -87,6 +87,7 @@ const readRepositoryState = async (launchPath, source = { type: 'working-tree' }
             ? await readBranchState(launchPath, source)
             : source.type === 'branch-working-tree'
               ? await readBranchWorkingTreeState(launchPath, source, {
+                  localChanges: options.localChanges,
                   showWhitespace: options.showWhitespace,
                 })
               : await readWorkingTreeState(launchPath, {
@@ -111,7 +112,7 @@ const readRepositoryState = async (launchPath, source = { type: 'working-tree' }
  *
  * @param {string} launchPath
  * @param {ReviewSource} [source]
- * @param {{showWhitespace?: boolean}} [options]
+ * @param {{localChanges?: import('../core/types.ts').BranchLocalChangesMode; showWhitespace?: boolean}} [options]
  * @returns {Promise<RepositoryState>}
  */
 const readWalkthroughRepositoryState = async (launchPath, source, options = {}) => {

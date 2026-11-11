@@ -10,6 +10,7 @@ import type {
   OpenReviewSourceKind,
   RepositoryState,
 } from '../../types.ts';
+import { branchLocalChangesOptions } from '../components/BranchLocalChangesMenu.tsx';
 
 type UseAppCommandsOptions = {
   changeSidebarMode: (mode: SidebarMode) => void;
@@ -215,6 +216,21 @@ export function useAppCommands({
         keymapAction: 'toggleWordWrap',
         title: 'Toggle Word Wrap',
       }),
+      ...branchLocalChangesOptions.map((option) =>
+        registry.register({
+          description: () =>
+            stateRef.current?.source.type === 'branch-working-tree'
+              ? `${option.description}${
+                  preferencesRef.current.branchLocalChanges === option.value ? ' (current)' : ''
+                }`
+              : 'Applies when comparing against a branch',
+          execute: () => {
+            void window.codiff.setBranchLocalChanges(option.value).catch(() => {});
+          },
+          id: `branch-local-changes-${option.value}`,
+          title: `Local Changes: ${option.label}`,
+        }),
+      ),
       registry.register({
         execute: () => {
           void window.codiff.increaseCodeFontSize().catch(() => {});

@@ -1,6 +1,21 @@
 // @ts-check
 
-const { fileSort, getFingerprint, getGravatarHash, git, normalizeStatus } = require('./common.cjs');
+const {
+  createSection,
+  createSummary,
+  fileSort,
+  getFingerprint,
+  getGravatarHash,
+  getWhitespaceDiffArgs,
+  git,
+  normalizeStatus,
+  readGitFile,
+  readGitImageFile,
+  readWorkingTreeFile,
+  readWorkingTreeImageFile,
+  summarizeContent,
+  validateRepositoryPath,
+} = require('./common.cjs');
 const {
   getComparisonRevision,
   readComparisonImageContent,
@@ -13,13 +28,17 @@ const {
   readGeneratedAttributeStates,
 } = require('../generated-files.cjs');
 const {
+  listUntrackedItems,
   readDiffImageContent: readWorkingTreeDiffImageContent,
   readDiffSectionContent: readWorkingTreeDiffSectionContent,
   readWorkingTreeState,
+  splitPatchByPath,
 } = require('./working-tree.cjs');
 
 /**
+ * @typedef {import('../../core/types.ts').BranchLocalChangesMode} BranchLocalChangesMode
  * @typedef {import('../../core/types.ts').ChangedFile} ChangedFile
+ * @typedef {import('../../core/types.ts').DiffSection} DiffSection
  * @typedef {import('../../core/types.ts').DiffImageContentRequest} DiffImageContentRequest
  * @typedef {import('../../core/types.ts').DiffImageContentResult} DiffImageContentResult
  * @typedef {import('../../core/types.ts').DiffSectionContentRequest} DiffSectionContentRequest
@@ -624,20 +643,266 @@ const mergeBranchAndWorkingTreeState = (branchState, workingTreeState) => {
 };
 
 /**
+ * Resolve a `branch-working-tree` input to its merge-base and head without
+ * reading any branch file contents, as an empty branch-diff state.
+ * @param {string} launchPath
+ * @param {string | BranchSource | BranchDiffSource | BranchWorkingTreeSource} input
+ * @returns {Promise<RepositoryState>}
+ */
+const readEmptyBranchState = async (launchPath, input) => {
+  const repoRoot = (await git(launchPath, ['rev-parse', '--show-toplevel'])).trim();
+  const { newRef, oldRef, source } = await resolveComparisonSource(
+    repoRoot,
+    normalizeBranchSourceInput(toBranchComparisonInput(input)),
+  );
+  return {
+    files: [],
+    generatedAt: Date.now(),
+    launchPath,
+    revision: getComparisonRevision(newRef, oldRef),
+    root: repoRoot,
+    source,
+  };
+};
+
+/**
+ * Every path that differs between `baseRef` and the working tree: committed,
+ * staged, and unstaged changes to tracked files plus untracked files.
+ * @param {string} repoRoot
+ * @param {string} baseRef
+ * @returns {Promise<Array<import('./common.cjs').StatusItem>>}
+ */
+const readCombinedStatus = async (repoRoot, baseRef) => {
+  const [raw, untrackedItems] = await Promise.all([
+    git(repoRoot, ['diff', '--name-status', '-z', '-M', baseRef]),
+    listUntrackedItems(repoRoot),
+  ]);
+  const tracked = parseCommitNameStatus(raw).map((item) => ({
+    ...item,
+    staged: false,
+    unstaged: true,
+    untracked: false,
+  }));
+  const trackedPaths = new Set(tracked.map((item) => item.path));
+  return [...tracked, ...untrackedItems.filter((item) => !trackedPaths.has(item.path))].sort(
+    fileSort,
+  );
+};
+
+/** @param {DiffSection} section @param {string} path @returns {DiffSection} */
+const toCombinedSection = (section, path) => ({
+  ...section,
+  id: `${path}:combined`,
+  kind: 'combined',
+});
+
+/**
+ * A single section diffing `baseRef` (the branch merge-base) against the
+ * working tree, so committed and uncommitted changes read as one diff.
+ * @param {string} repoRoot
+ * @param {string} baseRef
+ * @param {import('./common.cjs').StatusItem} item
+ * @param {{force?: boolean; patch?: {binary: boolean; patch: string}; patchOnly?: boolean; showWhitespace?: boolean}} [options]
+ * @returns {Promise<DiffSection>}
+ */
+const createCombinedSection = async (repoRoot, baseRef, item, options = {}) => {
+  if (item.untracked) {
+    return toCombinedSection(await createSection(repoRoot, item, 'unstaged', options), item.path);
+  }
+
+  const id = `${item.path}:combined`;
+  const readPatch = async () => {
+    const patch = await git(repoRoot, [
+      'diff',
+      '--patch',
+      '--no-ext-diff',
+      '-M',
+      ...getWhitespaceDiffArgs(options),
+      baseRef,
+      '--',
+      ...(item.oldPath ? [item.oldPath] : []),
+      item.path,
+    ]);
+    return { binary: /Binary files .* differ/.test(patch), patch };
+  };
+
+  if (options.patchOnly) {
+    const patch = options.patch ?? (await readPatch());
+    return patch.binary
+      ? {
+          binary: true,
+          id,
+          kind: 'combined',
+          loadState: 'binary',
+          patch: '',
+          summary: createSummary('Binary file changed.', { canLoad: false }),
+        }
+      : { binary: false, id, kind: 'combined', loadState: 'ready', patch: patch.patch };
+  }
+
+  const [oldFile, newFile] = await Promise.all([
+    readGitFile(repoRoot, baseRef, item.oldPath || item.path, options),
+    readWorkingTreeFile(repoRoot, item.path, options),
+  ]);
+  const summary = summarizeContent(oldFile, newFile);
+  if (summary.loadState !== 'ready') {
+    return {
+      binary: summary.binary,
+      id,
+      kind: 'combined',
+      loadState: summary.loadState,
+      patch: '',
+      summary: summary.summary,
+    };
+  }
+
+  const patch = await readPatch();
+  return {
+    binary: patch.binary,
+    id,
+    kind: 'combined',
+    loadState: 'ready',
+    newFile: newFile.file,
+    oldFile: oldFile.file,
+    patch: patch.patch,
+  };
+};
+
+/**
  * @param {string} launchPath
  * @param {string | BranchSource | BranchDiffSource | BranchWorkingTreeSource} input
  * @param {{showWhitespace?: boolean}} [options]
  * @returns {Promise<RepositoryState>}
  */
-const readBranchWorkingTreeState = async (launchPath, input, options = {}) => {
-  const [branchState, workingTreeState] = await Promise.all([
-    readBranchState(launchPath, toBranchComparisonInput(input)),
-    readWorkingTreeState(launchPath, {
-      eagerContents: false,
-      showWhitespace: options.showWhitespace,
-    }),
+const readCombinedBranchWorkingTreeState = async (launchPath, input, options = {}) => {
+  const branchState = await readEmptyBranchState(launchPath, input);
+  const baseRef = /** @type {BranchDiffSource} */ (branchState.source).baseRef;
+  const repoRoot = branchState.root;
+  const [status, rawPatch] = await Promise.all([
+    readCombinedStatus(repoRoot, baseRef),
+    git(repoRoot, [
+      'diff',
+      '--patch',
+      '--no-ext-diff',
+      '-M',
+      ...getWhitespaceDiffArgs(options),
+      baseRef,
+    ]),
   ]);
-  return mergeBranchAndWorkingTreeState(branchState, workingTreeState);
+  const patches = splitPatchByPath(rawPatch);
+  /** @type {Array<ChangedFile>} */
+  const files = await Promise.all(
+    status.map(async (item) => {
+      const section = await createCombinedSection(repoRoot, baseRef, item, {
+        patch: patches.get(item.path),
+        patchOnly: true,
+        showWhitespace: options.showWhitespace,
+      });
+      return {
+        fingerprint: getFingerprint(
+          `${item.status}\n${item.oldPath || ''}\n${section.loadState || 'ready'}\n${
+            section.binary ? 'binary' : 'text'
+          }\n${section.patch}\n${section.summary?.reason || ''}\n${
+            section.summary?.fingerprint || ''
+          }\n${section.oldFile?.contents || ''}\n${section.newFile?.contents || ''}`,
+        ),
+        oldPath: item.oldPath,
+        path: item.path,
+        sections: [section],
+        status: item.status,
+      };
+    }),
+  );
+
+  return mergeBranchAndWorkingTreeState(branchState, { ...branchState, files });
+};
+
+/**
+ * @param {string} launchPath
+ * @param {string | BranchSource | BranchDiffSource | BranchWorkingTreeSource} input
+ * @param {{localChanges?: BranchLocalChangesMode; showWhitespace?: boolean}} [options]
+ * @returns {Promise<RepositoryState>}
+ */
+const readBranchWorkingTreeState = async (launchPath, input, options = {}) => {
+  const mode = options.localChanges ?? 'separate';
+  if (mode === 'combined') {
+    return readCombinedBranchWorkingTreeState(launchPath, input, options);
+  }
+
+  const [branchState, workingTreeState] = await Promise.all([
+    mode === 'local'
+      ? readEmptyBranchState(launchPath, input)
+      : readBranchState(launchPath, toBranchComparisonInput(input)),
+    mode === 'branch'
+      ? null
+      : readWorkingTreeState(launchPath, {
+          eagerContents: false,
+          showWhitespace: options.showWhitespace,
+        }),
+  ]);
+  return mergeBranchAndWorkingTreeState(
+    branchState,
+    workingTreeState ?? { ...branchState, files: [] },
+  );
+};
+
+/**
+ * @param {string} launchPath
+ * @param {string} baseRef
+ * @param {DiffSectionContentRequest} request
+ */
+const readCombinedSectionContent = async (launchPath, baseRef, request) => {
+  const repoRoot = (await git(launchPath, ['rev-parse', '--show-toplevel'])).trim();
+  const path = validateRepositoryPath(request.path);
+  const item = (await readCombinedStatus(repoRoot, baseRef)).find(
+    (candidate) => candidate.path === path,
+  );
+  if (!item) {
+    throw new Error('File is not part of this branch.');
+  }
+
+  return createCombinedSection(repoRoot, baseRef, item, {
+    force: request.force,
+    showWhitespace: request.showWhitespace,
+  });
+};
+
+/**
+ * @param {string} launchPath
+ * @param {string} baseRef
+ * @param {DiffImageContentRequest} request
+ * @returns {Promise<DiffImageContentResult>}
+ */
+const readCombinedImageContent = async (launchPath, baseRef, request) => {
+  try {
+    const repoRoot = (await git(launchPath, ['rev-parse', '--show-toplevel'])).trim();
+    const path = validateRepositoryPath(request.path);
+    const item = (await readCombinedStatus(repoRoot, baseRef)).find(
+      (candidate) => candidate.path === path,
+    );
+    if (!item) {
+      throw new Error('File is not part of this branch.');
+    }
+
+    const [oldImage, newImage] = await Promise.all([
+      item.untracked ? undefined : readGitImageFile(repoRoot, baseRef, item.oldPath || item.path),
+      readWorkingTreeImageFile(repoRoot, item.path),
+    ]);
+    if (!oldImage && !newImage) {
+      return { reason: 'Codiff could not load either side of this image.', status: 'unavailable' };
+    }
+
+    return {
+      ...(newImage ? { newImage } : {}),
+      ...(oldImage ? { oldImage } : {}),
+      status: 'ready',
+    };
+  } catch (error) {
+    return {
+      reason: error instanceof Error ? error.message : 'Codiff could not load this image.',
+      status: 'unavailable',
+    };
+  }
 };
 
 /**
@@ -663,6 +928,13 @@ const toResolvedBranchDiffSource = (source) => {
  */
 const readBranchWorkingTreeSectionContent = (launchPath, request) => {
   const source = /** @type {BranchWorkingTreeSource} */ (request.source);
+  if (request.kind === 'combined') {
+    return readCombinedSectionContent(
+      launchPath,
+      toResolvedBranchDiffSource(source).baseRef,
+      request,
+    );
+  }
   return request.kind === 'staged' || request.kind === 'unstaged'
     ? readWorkingTreeDiffSectionContent(launchPath, request)
     : readBranchSectionContent(launchPath, toResolvedBranchDiffSource(source), request.path, {
@@ -677,6 +949,13 @@ const readBranchWorkingTreeSectionContent = (launchPath, request) => {
  */
 const readBranchWorkingTreeImageContent = (launchPath, request) => {
   const source = /** @type {BranchWorkingTreeSource} */ (request.source);
+  if (request.kind === 'combined') {
+    return readCombinedImageContent(
+      launchPath,
+      toResolvedBranchDiffSource(source).baseRef,
+      request,
+    );
+  }
   return request.kind === 'staged' || request.kind === 'unstaged'
     ? readWorkingTreeDiffImageContent(launchPath, request)
     : readBranchImageContent(launchPath, toResolvedBranchDiffSource(source), request.path);

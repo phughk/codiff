@@ -50,11 +50,13 @@ const {
 } = require('./agent.cjs');
 const { buildInstallSkillMenuItem, listAgentSkills } = require('./agent-skills.cjs');
 const {
+  branchLocalChangesModes,
   configToPreferences,
   createDefaultConfig,
   getConfigPath,
   initConfig,
   migrateFromPreferences,
+  normalizeBranchLocalChanges,
   normalizeCodeFontFamily,
   normalizeCodeFontSize,
   readConfig,
@@ -213,6 +215,7 @@ const getActiveAgent = () => getAgent(config.settings.agentBackend);
 /** @param {string} repositoryPath @param {ReviewSource} [source] */
 const readRepositoryStateWithConfig = (repositoryPath, source) =>
   readRepositoryState(repositoryPath, source, {
+    localChanges: config.settings.branchLocalChanges,
     showWhitespace: config.settings.showWhitespace,
   });
 
@@ -220,6 +223,7 @@ const readRepositoryStateWithConfig = (repositoryPath, source) =>
 const readInitialRepositoryStateWithConfig = (repositoryPath, launchOptions) =>
   launchOptions.walkthrough && !launchOptions.walkthroughFile
     ? readWalkthroughRepositoryState(repositoryPath, launchOptions.source, {
+        localChanges: config.settings.branchLocalChanges,
         showWhitespace: config.settings.showWhitespace,
       })
     : readRepositoryStateWithConfig(repositoryPath, launchOptions.source);
@@ -957,6 +961,19 @@ const buildApplicationMenu = () =>
                 },
                 label: 'Show Whitespace',
                 type: 'checkbox',
+              },
+              {
+                label: 'Branch Local Changes',
+                submenu: branchLocalChangesModes.map(({ label, value }) => ({
+                  checked: config.settings.branchLocalChanges === value,
+                  click: () => {
+                    updateConfig({
+                      settings: { ...config.settings, branchLocalChanges: value },
+                    });
+                  },
+                  label,
+                  type: /** @type {const} */ ('radio'),
+                })),
               },
               {
                 checked: config.settings.expandUnchanged,
@@ -2245,6 +2262,12 @@ ipcMain.handle('codiff:setDiffStyle', (_event, value) => {
       ...config.settings,
       diffStyle: value === 'unified' ? 'unified' : 'split',
     },
+  });
+});
+
+ipcMain.handle('codiff:setBranchLocalChanges', (_event, value) => {
+  updateConfig({
+    settings: { ...config.settings, branchLocalChanges: normalizeBranchLocalChanges(value) },
   });
 });
 

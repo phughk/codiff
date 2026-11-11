@@ -292,6 +292,10 @@ const resolveSearchRevision = async (request, repoPath) => {
     return side === 'additions'
       ? { cached: true, revision: null }
       : { cached: false, revision: 'HEAD' };
+  if (kind === 'combined' && source.type === 'branch-working-tree' && source.baseRef)
+    return side === 'additions'
+      ? { cached: false, revision: null, untracked: true }
+      : { cached: false, revision: source.baseRef };
   if (kind === 'unstaged')
     return side === 'additions'
       ? { cached: false, revision: null, untracked: true }

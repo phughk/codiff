@@ -176,6 +176,7 @@ const createCodiffMock = (overrides: Partial<Window['codiff']> = {}): Window['co
   getPlanReview: vi.fn(async () => null),
   getPreferences: vi.fn(async () => ({
     agentBackend: 'codex' as const,
+    branchLocalChanges: 'separate' as const,
     claudeModel: defaultSettings.claudeModel,
     codeFontFamily: defaultSettings.codeFontFamily,
     codeFontSize: defaultSettings.codeFontSize,
@@ -273,6 +274,7 @@ const createCodiffMock = (overrides: Partial<Window['codiff']> = {}): Window['co
     document: { ...request, version: 'next-version' },
     status: 'saved' as const,
   })),
+  setBranchLocalChanges: vi.fn(async () => {}),
   setDiffStyle: vi.fn(async () => {}),
   setPullRequestFileViewed: vi.fn(async () => {}),
   setReviewPrompt: vi.fn(async () => {}),

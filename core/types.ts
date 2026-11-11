@@ -1,10 +1,10 @@
 import type { MarkdownAnnotationAnchor } from '@nkzw/mdx-editor';
-import type { CodiffDiffStyle } from './config/types.ts';
+import type { BranchLocalChangesMode, CodiffDiffStyle } from './config/types.ts';
 
 export type DiffSection = {
   binary: boolean;
   id: string;
-  kind: 'commit' | 'pull-request' | 'staged' | 'unstaged';
+  kind: 'combined' | 'commit' | 'pull-request' | 'staged' | 'unstaged';
   loadState?: 'binary' | 'deferred' | 'directory' | 'error' | 'ready' | 'too-large';
   newFile?: {
     cacheKey?: string;
@@ -870,8 +870,11 @@ export type DiffImageContentResult =
 
 export type CodiffTheme = 'system' | 'light' | 'dark';
 
+export type { BranchLocalChangesMode } from './config/types.ts';
+
 export type CodiffPreferences = {
   agentBackend: 'codex' | 'claude' | 'opencode' | 'pi';
+  branchLocalChanges: BranchLocalChangesMode;
   claudeModel: string;
   codeFontFamily: string;
   codeFontSize: number;

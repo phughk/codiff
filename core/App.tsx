@@ -5,6 +5,7 @@ import { TreeStructureIcon as TreeStructure } from '@phosphor-icons/react/TreeSt
 import type { FileDiffLoadedFiles } from '@pierre/diffs';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AskButton, AskPanel } from './app/components/AskPanel.tsx';
+import { BranchLocalChangesMenu } from './app/components/BranchLocalChangesMenu.tsx';
 import { CommandBar } from './app/components/CommandBar.tsx';
 import { KeyboardShortcutsHelp } from './app/components/KeyboardShortcutsHelp.tsx';
 import { OpenReviewSourceDialog } from './app/components/OpenReviewSourceDialog.tsx';
@@ -1202,18 +1203,19 @@ export default function App({
     }
 
     const removeConfigListener = window.codiff.onConfigChanged((nextConfig) => {
-      const previousShowWhitespace = preferencesRef.current.showWhitespace;
+      const previousPreferences = preferencesRef.current;
       const nextPreferences = getPreferencesFromConfig(nextConfig);
       preferencesRef.current = nextPreferences;
       setCodiffConfig(nextConfig);
       setPreferences(nextPreferences);
 
-      if (previousShowWhitespace === nextPreferences.showWhitespace) {
-        return;
-      }
-
       const currentState = stateRef.current;
-      if (!currentState) {
+      if (
+        !currentState ||
+        (previousPreferences.showWhitespace === nextPreferences.showWhitespace &&
+          (previousPreferences.branchLocalChanges === nextPreferences.branchLocalChanges ||
+            currentState.source.type !== 'branch-working-tree'))
+      ) {
         return;
       }
 
@@ -1249,7 +1251,7 @@ export default function App({
           setSelectedPath(nextSelectedPath);
           setReloadDeltaPaths(new Set());
           setItemVersionByKey({});
-          setReviewComments(getReviewCommentsFromState(orderedState));
+          setReviewComments((current) => getRefreshedReviewComments(orderedState, current));
           setViewed(nextViewed);
           setCollapsed(getCollapsedViewedPaths(orderedState.files, nextViewed));
           setExpandedReviewKeys(new Set());
@@ -2227,6 +2229,14 @@ export default function App({
                   </span>
                   <ArrowSquareOut aria-hidden size={14} weight="bold" />
                 </a>
+              ) : state.source.type === 'branch-working-tree' ? (
+                <BranchLocalChangesMenu
+                  label={sidebarSourceLabel}
+                  mode={preferences.branchLocalChanges}
+                  onChange={(mode) => {
+                    void window.codiff.setBranchLocalChanges(mode).catch(() => {});
+                  }}
+                />
               ) : (
                 <span className="review-top-bar-source">
                   <span className="review-top-bar-source-label">{sidebarSourceLabel}</span>

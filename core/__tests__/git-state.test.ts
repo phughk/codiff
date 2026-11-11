@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { expect, test } from 'vite-plus/test';
 import { fileHasVisibleDiff, getDiffLineCount } from '../lib/diff.ts';
 import type {
+  BranchLocalChangesMode,
   DiffSection,
   DiffSectionContentRequest,
   RepositoryState,
@@ -104,7 +105,7 @@ type GitStateModule = {
   readRepositoryState: (
     launchPath: string,
     source?: ReviewSource,
-    options?: { showWhitespace?: boolean },
+    options?: { localChanges?: BranchLocalChangesMode; showWhitespace?: boolean },
   ) => Promise<RepositoryState>;
   readSourceRevision: (launchPath: string, source: ReviewSource) => Promise<string | null>;
   readWalkthroughRepositoryState: (
@@ -2074,3 +2075,57 @@ test('readRepositoryState builds a diff for a base...head range', () =>
     expect(added?.status).toBe('added');
     expect(added?.sections[0]?.patch).toContain('new file');
   }));
+
+const summarizeSectionKinds = (state: RepositoryState) =>
+  state.files.map((file) => [file.path, file.sections.map((section) => section.kind)]);
+
+test('branch comparisons honor the local changes mode', async () => {
+  await withRepo(async (repo) => {
+    await writeRepoFile(repo, 'shared.txt', 'base\n');
+    await writeRepoFile(repo, 'branch-only.txt', 'base\n');
+    await commitAll(repo, 'base');
+    await git(repo, ['branch', 'base']);
+    await writeRepoFile(repo, 'shared.txt', 'base\ncommitted\n');
+    await writeRepoFile(repo, 'branch-only.txt', 'base\ncommitted\n');
+    await commitAll(repo, 'branch work');
+    await writeRepoFile(repo, 'shared.txt', 'base\ncommitted\nlocal\n');
+    await writeRepoFile(repo, 'untracked.txt', 'new\n');
+
+    const source: ReviewSource = { ref: 'base', type: 'branch-working-tree' };
+    const read = (localChanges: BranchLocalChangesMode) =>
+      readRepositoryState(repo, source, { localChanges });
+
+    expect(summarizeSectionKinds(await read('separate'))).toEqual([
+      ['branch-only.txt', ['commit']],
+      ['shared.txt', ['commit', 'unstaged']],
+      ['untracked.txt', ['unstaged']],
+    ]);
+    expect(summarizeSectionKinds(await read('branch'))).toEqual([
+      ['branch-only.txt', ['commit']],
+      ['shared.txt', ['commit']],
+    ]);
+    expect(summarizeSectionKinds(await read('local'))).toEqual([
+      ['shared.txt', ['unstaged']],
+      ['untracked.txt', ['unstaged']],
+    ]);
+
+    const combined = await read('combined');
+    expect(combined.source.type).toBe('branch-working-tree');
+    expect(summarizeSectionKinds(combined)).toEqual([
+      ['branch-only.txt', ['combined']],
+      ['shared.txt', ['combined']],
+      ['untracked.txt', ['combined']],
+    ]);
+    const shared = combined.files.find((file) => file.path === 'shared.txt');
+    expect(shared?.sections[0].patch).toContain('+committed\n+local');
+
+    const content = await readDiffSectionContent(repo, {
+      force: true,
+      kind: 'combined',
+      path: 'shared.txt',
+      source: combined.source,
+    });
+    expect(content.oldFile?.contents).toBe('base\n');
+    expect(content.newFile?.contents).toBe('base\ncommitted\nlocal\n');
+  });
+});

@@ -10,6 +10,7 @@ setCustomExtension('cts', 'typescript');
 setCustomExtension('mts', 'typescript');
 
 export const sectionLabel: Record<DiffSection['kind'], string> = {
+  combined: 'Branch + Local',
   commit: 'Commit',
   'pull-request': 'PR',
   staged: 'Staged',
