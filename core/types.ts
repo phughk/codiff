@@ -249,6 +249,8 @@ export type RepositoryState = {
   branch: string | null;
   codeQualityFindings?: ReadonlyArray<PullRequestCodeQualityFinding>;
   commitMetadata?: CommitMetadata;
+  /** Signed GitHub attachment URLs for the local description preview only. */
+  descriptionAssetUrls?: Readonly<Record<string, string>>;
   /**
    * Images in the pull request description the renderer cannot load itself
    * (attachments on private repositories), keyed by their URL in the
